@@ -1,4 +1,6 @@
+# BFV_config.py
 import numpy as np
+from generic_math import is_prime, is_t_minus_1_multiple_of_2n, batch_encode_decode_matrices, is_power_of_2
 
 class BFVSchemeConfiguration:
     def __init__(self, t: int, q: int, n: int, ternary: bool = True):
@@ -9,10 +11,15 @@ class BFVSchemeConfiguration:
         :param ternary: If true, secret key is ternary {-1,0,1}, else binary {0,1}
         """
         self.t = int(t)
+        assert is_prime(self.t), "plaintext modulus t must be prime"
         self.q = int(q)
         self.n = int(n)
+        assert is_power_of_2(n), "n should be a power of 2"
+        assert is_t_minus_1_multiple_of_2n(self.t,self.n), "t-1 must be a multiple of 2n"
         self.ternary = ternary
         self.Delta = q // t
+        # get encode/decode matrices
+        self._E , self._WT = batch_encode_decode_matrices(n,t)
     
     def is_A_valid(self, A) -> bool:
         """
@@ -50,4 +57,36 @@ class BFVSchemeConfiguration:
     def validate_AB(self, A, B):
         self.validate_A(A)
         self.validate_B(B)
+    
+    def _naive_polynomial_mult_nomod(self, a_in: np.ndarray, b_in: np.ndarray) -> np.ndarray:
+        """Compute a*b mod x^n+1 naively (without NTT)"""
+        self.validate_AB(a_in,b_in)
+        n = len(a_in)
+        cconv = np.convolve(a_in, b_in)
+        # compute c mod x^n+1
+        res = np.zeros(n, dtype=cconv.dtype)
+        for i in range(len(cconv)):
+            if i < n:
+                res[i] += cconv[i]
+            else:
+                # Wrap and negate!
+                res[i - n] -= cconv[i]
+        return res
+    
+    def polynomial_mult_nomod(self, a_in: np.ndarray, b_in: np.ndarray) -> np.ndarray:
+        return self._naive_polynomial_mult_nomod(a_in,b_in)
+    
+    def batch_encode(self, v: np.ndarray) -> np.ndarray:
+        assert len(v)==self.n, "integer vector bad length"
+        vcol = v.reshape(self.n, 1)
+        m  = (self._E @ vcol) % self.t
+        m = m.flatten()
+        nooverflow_m = m.astype(object)
+        return nooverflow_m
+    
+    def batch_decode(self, m: np.ndarray) -> np.ndarray:
+        assert len(m)==self.n, "plaintext bad length"
+        mcol = m.reshape(self.n, 1)#.astype(object)
+        v = (self._WT @ mcol) % self.t
+        return v.flatten().astype(object)
 

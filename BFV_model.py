@@ -1,6 +1,6 @@
+# BFV_model.py
 import numpy as np
 from BFV_config import BFVSchemeConfiguration
-from BFV_math import polynomial_mult_nomod
 
 class BFVSchemeClient:
     def __init__(self, config: BFVSchemeConfiguration):
@@ -16,35 +16,38 @@ class BFVSchemeClient:
             self._S = np.random.choice([0, 1], size=config.n)
 
     def polynomial_mul(self, A, B):
-        return polynomial_mult_nomod(self.config,A,B)
+        return self.config.polynomial_mult_nomod(A,B)
 
-    def encrypt(self, M: np.ndarray):
+    def encrypt(self, P: np.ndarray):
         """
-        Encrypts message polynomial M (coeffs mod t, degree n-1).
+        Encrypts plaintext P (integers mod t, length n).
         Returns tuple (A, B) where:
             A: size n, each row is a public polynomial mod q.
             B: size n, the result poly mod q.
         """
         # Message encoding
-        M = np.array(M).flatten() % self.config.t                      # size n
+        M = self.config.batch_encode(np.array(P).flatten() % self.config.t)
         DeltaM = (M * self.config.Delta) % self.config.q            # size n
         # random A (public key), n coefficients mod q, size n
         A = np.random.randint(0, self.config.q, size=self.config.n)
-        # small noise E (centered discrete gaussian), mod q
-        E = np.round(np.random.normal(0, 1, size=self.config.n)).astype(int) % self.config.q
+        # small noise E (centered discrete gaussian)
+        E = np.round(np.random.normal(0, 1, size=self.config.n)).astype(int)
         # B = -A*S + DeltaM + E, all mod q, S is persistent secret key
-        negAS = (-self.polynomial_mul(A, self._S)) % self.config.q
+        negAS = -self.polynomial_mul(A, self._S)
         B = (negAS + DeltaM + E) % self.config.q
         # return encryption result
         return A, B
 
     def decrypt(self, A, B):
         self.config.validate_AB(A,B)
-        inverse = B + self.polynomial_mul(A, self._S)
-        inverse = inverse % self.config.q
-        inverse = inverse / self.config.Delta
-        message = inverse % self.config.t
-        return message
+        inverseu  = (B + self.polynomial_mul(A, self._S)) % self.config.q
+        inverseu = inverseu.astype(int)
+        # centre-lift to (-q/2 , q/2]
+        mask = inverseu > self.config.q // 2 # Boolean array
+        inverseu[mask] -= self.config.q
+        m_scaled = np.round(inverseu / self.config.Delta).astype(int)  # now ~ M
+        m = m_scaled % self.config.t # remove Delta and reduce
+        return self.config.batch_decode(m)
 
 
 class BFVSchemeServer:
@@ -53,13 +56,8 @@ class BFVSchemeServer:
 
     # helper function
     def polynomial_mul(self, A, B):
-        return polynomial_mult_nomod(self.config,A,B)
+        return self.config.polynomial_mult_nomod(A,B)
 
-    def encode(self, P):
-        # this is not really implemented yet (hopefully we dont need it)
-        M = np.array(P) % self.config.t
-        return M
-    
     def add_ciphercipher(self, A1,B1,A2,B2):
         # error checking
         self.config.validate_AB(A1,B1)
@@ -70,11 +68,11 @@ class BFVSchemeServer:
         return Anew, Bnew
     
     def add_cipherplain(self, A1, B1, P2):
-        Bnew = B1 + (config.Delta * self.encode(P2))
+        Bnew = (B1 + (self.config.Delta * self.config.batch_encode(P2))) % self.config.q
         return A1, Bnew
     
     def mul_cipherplain(self, A1, B1, P2):
-        encoding = self.encode(P2)
+        encoding = self.config.batch_encode(P2)
         Anew = self.polynomial_mul(A1, encoding) % self.config.q
         Bnew = self.polynomial_mul(B1, encoding) % self.config.q
         return Anew, Bnew
