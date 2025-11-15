@@ -1,27 +1,31 @@
-// ============================================================================
-// mod_single.sv — Reduce a single (possibly wide/signed) value modulo q
-// ============================================================================
 `include "types.svh"
-
 module mod_single #(
-  parameter int unsigned W  = W_BITS_L,   // input word width
-  parameter int unsigned WW = 2*W_BITS_L  // temp width for safety (mults)
+  parameter int unsigned W  = W_BITS_L,     
+  parameter int unsigned WW = 2*W_BITS_L   
 )(
-  input  logic signed [WW-1:0] in_val,  // can be wider than W
-  output word_t                out_mod  // reduced into [W-1:0],  in [0, q)
+  input  logic signed [WW-1:0] in_val,  
+  output word_t                out_mod  
 );
-  // Treat q as signed for comparison; keep it constant
-  localparam word_t Q = Q_MOD_L;
-
-  function automatic word_t mod_q(input logic signed [WW-1:0] x);
-    logic signed [WW-1:0] r;
+  localparam word_t Q             = Q_MOD_L;
+  localparam int unsigned WWP     = WW + 1;   
+  localparam int unsigned MAXSUB  = 64;        
+  function automatic word_t reduce_pos(input logic [WWP-1:0] t_in);
+    logic [WWP-1:0] t, qext;
     begin
-      // SystemVerilog % keeps sign; normalize to [0,q)
-      r = x % Q;
-      if (r < 0) r = r + Q;
-      mod_q = word_t'(r[W-1:0]); // truncate to W bits (q should fit W bits)
+      t    = t_in;
+      qext = { {(WWP-W){1'b0}}, Q };
+      for (int k = 0; k < MAXSUB; k++) begin
+        if (t >= qext) t = t - qext;
+      end
+      reduce_pos = word_t'(t[W-1:0]);
     end
   endfunction
-
-  assign out_mod = mod_q(in_val);
+  wire is_neg = in_val[WW-1];
+  logic [WW-1:0] abs_u;
+  assign abs_u = is_neg ? $unsigned(-in_val) : $unsigned(in_val);
+  logic [WWP-1:0] abs_ext;
+  assign abs_ext = { {(WWP-WW){1'b0}}, abs_u };
+  wire word_t r_pos = reduce_pos(abs_ext);
+  wire word_t r_neg = (r_pos == '0) ? word_t'(0) : (Q - r_pos);
+  assign out_mod = is_neg ? r_neg : r_pos;
 endmodule

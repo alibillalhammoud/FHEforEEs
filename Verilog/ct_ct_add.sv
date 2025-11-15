@@ -3,16 +3,13 @@
 module ct_ct_add #(
   parameter int unsigned N  = N_SLOTS_L,
   parameter int unsigned W  = W_BITS_L,
-  // >>> add this: let the caller pass q explicitly
   parameter logic [W-1:0]   QP = Q_MOD_L
 )(
   input  CT_t in_ct1,
   input  CT_t in_ct2,
   output CT_t out_ct
 );
-  // use the parameterized q everywhere
   localparam logic [W-1:0] Q = QP;
-
   function automatic word_t add_mod_q(input logic [W-1:0] a, input logic [W-1:0] b);
     logic [W:0] sum, qext, diff;
     begin
@@ -26,7 +23,6 @@ module ct_ct_add #(
       end
     end
   endfunction
-
   genvar i;
   generate
     for (i = 0; i < N; i++) begin : GEN_ADD

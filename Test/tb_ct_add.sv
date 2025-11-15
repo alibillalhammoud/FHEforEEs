@@ -1,27 +1,18 @@
 `timescale 1ns/1ps
-
-// Override defaults for this test
 `define N_SLOTS 8
 `define W_BITS  16
 `define Q_MOD   16'd7710
 `define T_MOD   16'd257
 `define DELTA   16'd30
-
 `include "verilog/types.svh"
-//`include "verilog/ct_ct_add.sv"   // simplified version that uses add_mod_q
-
 module tb_ct_add;
   localparam int N = N_SLOTS_L;
-
-  // DUT ports
   CT_t in1, in2, out;
   ct_ct_add #(.N(N_SLOTS_L), .W(W_BITS_L), .QP(16'd7710)) dut (
     .in_ct1 (in1),
     .in_ct2 (in2),
     .out_ct (out)
   );
-
-  // Expected result container
   CT_t exp;
 
   task automatic check_equal_vec(string tag, vec_t a, vec_t b);
@@ -34,9 +25,8 @@ module tb_ct_add;
   endtask
 
   initial begin
-    $display("== CT + CT fixed-vector test (q=7710, n=8) ==");
-
     // Cipher 1
+    $display("== CT + CT fixed-vector test (q=7710, n=8) ==");
     in1.A[0]=1429; in1.A[1]=4717; in1.A[2]=6311; in1.A[3]=3279;
     in1.A[4]=7215; in1.A[5]=6215; in1.A[6]=6931; in1.A[7]=973;
     in1.B[0]=7531; in1.B[1]=4381; in1.B[2]=1094; in1.B[3]=7529;
@@ -53,16 +43,10 @@ module tb_ct_add;
     exp.A[4]=2378; exp.A[5]=6219; exp.A[6]=7083; exp.A[7]=3986;
     exp.B[0]=1398; exp.B[1]=588;  exp.B[2]=7133; exp.B[3]=6006;
     exp.B[4]=255;  exp.B[5]=7244; exp.B[6]=7107; exp.B[7]=4586;
-
-
-    // Let combinational settle
     #1;
-
-    // Check results
     check_equal_vec("A", out.A, exp.A);
     check_equal_vec("B", out.B, exp.B);
-
-    $display("PASS ✅  ct_ct_add produced expected output.");
+    $display("PASS: ct_ct_add produced expected output.");
     $finish;
   end
 endmodule
