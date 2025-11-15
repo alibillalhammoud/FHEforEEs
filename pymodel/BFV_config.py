@@ -1,15 +1,17 @@
 # BFV_config.py
 import numpy as np
 from generic_math import is_prime, is_t_minus_1_multiple_of_2n, batch_encode_decode_matrices, is_power_of_2
+import math
 
 class BFVSchemeConfiguration:
-    def __init__(self, t: int, q: int, n: int, ternary: bool = True):
+    def __init__(self, base: int, t: int, q: int, n: int, ternary: bool = True):
         """
         :param t: Plaintext modulus (prime or power of prime)
         :param q: Ciphertext modulus (t divides q, q much larger than t)
         :param n: Degree of polynomial + 1
         :param ternary: If true, secret key is ternary {-1,0,1}, else binary {0,1}
         """
+        self.base = base
         self.t = int(t)
         assert is_prime(self.t), "plaintext modulus t must be prime"
         self.q = int(q)
@@ -19,6 +21,8 @@ class BFVSchemeConfiguration:
         self.ternary = ternary
         self.Delta = q // t
         assert self.Delta%2==0, "q must be an even multiple of t"
+        self.Q = self.q * self.Delta
+        self.num_digits = math.ceil(math.log(self.Q) / math.log(self.base))
         # get encode/decode matrices
         self._E , self._WT = batch_encode_decode_matrices(n,t)
     
@@ -61,7 +65,7 @@ class BFVSchemeConfiguration:
     
     def _naive_polynomial_mult_nomod(self, a_in: np.ndarray, b_in: np.ndarray) -> np.ndarray:
         """Compute a*b mod x^n+1 naively (without NTT)"""
-        self.validate_AB(a_in,b_in)
+        # self.validate_AB(a_in,b_in)
         n = len(a_in)
         cconv = np.convolve(a_in, b_in)
         # compute c mod x^n+1
