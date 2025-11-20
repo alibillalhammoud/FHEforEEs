@@ -1,7 +1,7 @@
 `include "types.svh"
 module mod_single #(
   parameter int unsigned W  = W_BITS_L,     
-  parameter int unsigned WW = 2*W_BITS_L   
+  parameter int unsigned WW = 2*W_BITS_L
 )(
   input  logic signed [WW-1:0] in_val,  
   output word_t                out_mod  

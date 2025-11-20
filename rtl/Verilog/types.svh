@@ -5,8 +5,13 @@
 `define Q_MOD     32'd12289 
 `define T_MOD     32'd256    
 `define DELTA     32'd48    
-typedef logic signed [`W_BITS-1:0]      word_t;                
-typedef word_t                          vec_t   [`N_SLOTS];        
+`define BIG_Q     `Q_MOD * `DELTA
+`define BASE      32'd2
+`define NUM_DIGITS $clog2(`BIG_Q) / $clog2(`BASE)
+typedef logic signed [`W_BITS-1:0]      word_t; 
+typedef logic signed [2*`W_BITS-1:0]    wide_word_t;
+typedef word_t                          vec_t   [`N_SLOTS];    
+typedef wide_word_t                     wide_vec_t [`N_SLOTS];    
 typedef vec_t                           PK_t;     
 typedef PK_t                            PT_t;  
 typedef struct {

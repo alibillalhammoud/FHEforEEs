@@ -5,8 +5,8 @@ module mod_vector #(
   parameter int unsigned W   = W_BITS_L,
   parameter int unsigned WW  = 2*W_BITS_L        
 )(
-  input  logic signed [WW-1:0] in_vec [N],
-  output vec_t                 out_vec
+  input  wide_vec_t in_vec,
+  output vec_t      out_vec
 );
   localparam logic [W-1:0] Q = Q_MOD_L;
   localparam int unsigned WWP = ((WW > W) ? WW : W) + 1;
