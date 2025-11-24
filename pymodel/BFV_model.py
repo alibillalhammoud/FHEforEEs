@@ -4,8 +4,6 @@ from BFV_config import BFVSchemeConfiguration
 from generic_math import gen_uniform_rand_arr, nparr_int_round, RNSInteger, polynomial_RNSmult_constant
 import math
 import copy
-import warnings
-warnings.warn("get rid of this eventually")
 
 class BFVSchemeClient:
     def __init__(self, config: BFVSchemeConfiguration):
@@ -108,54 +106,29 @@ class BFVSchemeServer:
         Bnew = self.polynomial_mul(B1, encoded_pt)
         return Anew, Bnew
   
-    def MY_decompMultRNS(self,D2,RLev):
-        results_A, results_B = list(), list()
-        for i, (evalKey_polyA, evalKey_polyB) in enumerate(RLev):
-            result_i_A, result_i_B = evalKey_polyA*D2[i], evalKey_polyB*D2[i]
-            results_A.append(result_i_A)
-            results_B.append(result_i_B)
-        # create 0 polynomials (for sums)
-        finalA, finalB = copy.deepcopy(RLev[0][0]), copy.deepcopy(RLev[0][0])
-        [coef.set_to_zero() for coef in finalA]
-        [coef.set_to_zero() for coef in finalB]
-        assert isinstance(finalA[0],RNSInteger), "need RNS integers"
-        # produce sum
-        for result_i_A, result_i_B in zip(results_A,results_B):
-            finalA += result_i_A
-            finalB += result_i_B
-        return finalA, finalB
-    
-    # TODO figure out why this works and mine doesnt
-    def _decompMultRNS(self, D2, RLev):
-        """
-        D2   : polynomial of RNS integers on the basis q = (q1,…,qk)
-        RLev : [(A1,B1), … ,(Ak,Bk)],  encryptions of αᵢ·S²   (mod q)
-
-        return Σᵢ Decompᵢ(D2)·(Aᵢ,Bᵢ)   as (ΔA,ΔB)   (see eqn (1) above)
-        """
-        k   = len(RLev)
-        n   = self.config.n
-        qbs = self.config.RNS_basis_q      # the “small” basis (q1,…,qk)
-
-        # -----  build the k decomposed polynomials -------------------
-        decomp = []
-        for i in range(k):
-            coeffs_i = [int(c.residues[i])           # <---- residue wrt qi
-                        for c in D2]                 # c is an RNSInteger
-            decomp.append(np.array([RNSInteger(v, qbs) for v in coeffs_i],
-                                dtype=object))
-
-        # ----- accumulate Σᵢ Decompᵢ(D2)·RLevᵢ -----------------------
-        zero_poly = np.array([RNSInteger(0, qbs) for _ in range(n)], dtype=object)
-        deltaA, deltaB = zero_poly.copy(), zero_poly.copy()
-
-        for P_i, (A_i, B_i) in zip(decomp, RLev):
-            deltaA += self.polynomial_mul(P_i, A_i)
-            deltaB += self.polynomial_mul(P_i, B_i)
-
-        # everything is already on basis q, nothing else to do
-        return deltaA, deltaB
-    
+    def _decompMultRNS(self,D2,RLev):
+        # initialize total sums to 0
+        total_sumA = np.array([RNSInteger(0, self.config.RNS_basis_q) for _ in range(self.config.n)], dtype=object)
+        total_sumB = np.array([RNSInteger(0, self.config.RNS_basis_q) for _ in range(self.config.n)], dtype=object)
+        # construct decomp matrix (vector of polynomials) and perform mult with RLev keys
+        for i, prime_modulo in enumerate(self.config.RNS_basis_q):
+            # get the ith gadget decomp polynomial of D2 (polynomial of normal integers)
+            # Already in RNS basis, so extract the "i-th" residue from every coefficient in D2
+            gadget_polynomial_i = [coef.residues[i] for coef in D2]
+            # pretend like it is an RNSInteger (really need to broadcast each coefficient to all residues, easier to implement this way)
+            # Note in hardware you dont actually need to write each coef in RNS basis (compute % prime_i). Just broadcast to all residues 
+            gadget_polynomial_i = [RNSInteger(coef,self.config.RNS_basis_q) for coef in gadget_polynomial_i]
+            # get the relinearization keys
+            corresponding_relinA_key = RLev[i][0]
+            corresponding_relinB_key = RLev[i][1]
+            # convolve i-th relin keys with gadget decomp polynomial i
+            A_partial_sum_i = self.polynomial_mul(gadget_polynomial_i,corresponding_relinA_key)
+            B_partial_sum_i = self.polynomial_mul(gadget_polynomial_i,corresponding_relinB_key)
+            # accumulate
+            total_sumA += A_partial_sum_i
+            total_sumB += B_partial_sum_i
+        return total_sumA, total_sumB
+            
     def _relinearization(self, D0, D1, D2, RLev):
         ct_alpha = D1, D0
         ct_beta = self._decompMultRNS(D2,RLev)
@@ -183,9 +156,12 @@ class BFVSchemeServer:
         D1 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D1], dtype=object)
         D2 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D2], dtype=object)
         # fastBconv from B*Ba to q
-        D0 = np.array([coef.centeredfastBconv(self.config.RNS_basis_q) for coef in D0], dtype=object)
-        D1 = np.array([coef.centeredfastBconv(self.config.RNS_basis_q) for coef in D1], dtype=object)
-        D2 = np.array([coef.centeredfastBconv(self.config.RNS_basis_q) for coef in D2], dtype=object)
+        D0 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D0], dtype=object)
+        D1 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D1], dtype=object)
+        D2 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D2], dtype=object)
+        #D0 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D0], dtype=object)
+        #D1 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D1], dtype=object)
+        #D2 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D2], dtype=object)
         # Relinerization
         ctA, ctB = self._relinearization(D0, D1, D2, RLev)
         return ctA, ctB

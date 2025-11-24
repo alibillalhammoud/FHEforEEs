@@ -21,21 +21,21 @@ class BFVSchemeConfiguration:
         assert is_t_minus_1_multiple_of_2n(self.t,self.n), "t-1 must be a multiple of 2n" # helps with NTT
         # calculate an appropriate ct modulus (q), then get scaling factor (delta) and large mod (Q)
         # also init RNS
+        max_residue_size = 2**32
         desired_q_numbits = int(desired_q_numbits)
         approx_q_size = 2**desired_q_numbits
-        self.RNS_basis_q = gen_RNS_basis(lower_bound=approx_q_size, max_residue_size=2**64, multiple_of=[self.t])
+        self.RNS_basis_q = gen_RNS_basis(lower_bound=approx_q_size, max_residue_size=max_residue_size, multiple_of=[self.t])
         self.RNS_CRT_coeffs_q = compute_CRT_coefficients(self.RNS_basis_q)
         self.q = np.prod(self.RNS_basis_q)
         assert self.q % self.t==0, "q must be a multiple of t"
         self.Delta = self.q // self.t
         # (I think this is impossible actually!) assert self.Delta%2==0, "q must be an even multiple of t"
         self.Q = self.q * self.Delta
-        self.RNS_basis_qB = gen_RNS_basis(lower_bound=self.Q, max_residue_size=2**64, multiple_of=self.RNS_basis_q)
-        self.RNS_basis_qBBa = gen_RNS_basis(lower_bound=self.Q*self.Delta, max_residue_size=2**64, multiple_of=self.RNS_basis_qB)
+        self.RNS_basis_qB = gen_RNS_basis(lower_bound=self.Q, max_residue_size=max_residue_size, multiple_of=self.RNS_basis_q)
+        self.RNS_basis_qBBa = gen_RNS_basis(lower_bound=self.Q*self.Delta, max_residue_size=max_residue_size, multiple_of=self.RNS_basis_qB)
         self.qBBa = np.prod(self.RNS_basis_qBBa)
-        #qmask = np.isin(self.RNS_basis_qBBa, self.RNS_basis_q)
-        #self.RNS_basis_BBa = self.RNS_basis_qBBa[~qmask]
-        #raise ValueError("you need to check that self.RNS_basis_BBa is a bunch of python ints (not numpy ints)")
+        self.RNS_basis_B = np.array([int(b) for b in self.RNS_basis_qB if b not in self.RNS_basis_q], dtype=object)
+        self.RNS_basis_Ba = np.array([int(b) for b in self.RNS_basis_qBBa if b not in self.RNS_basis_qB], dtype=object)
         # get encode/decode matrices
         self._E , self._WT = batch_encode_decode_matrices(n,t)
         # secret key setting
