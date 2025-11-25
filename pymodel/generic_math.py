@@ -6,6 +6,7 @@ import random
 from collections.abc import Iterable
 import warnings
 import copy
+from ntt_friendly_prime import negacyclic_moduli
 
 def is_prime(x) -> bool:
     return bool(sympy.isprime(x))
@@ -64,7 +65,7 @@ def nparr_int_round(dividend: np.ndarray, divisor: int) -> np.ndarray:
     half = divisor >> 1
     return (dividend+half) // divisor
 
-def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable = None) -> np.ndarray:
+def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable = None, scheme_SIMD_slots: int = None) -> np.ndarray:
     """Generates a valid ResidueNumberSystem basis (a set of co-prime integers)
     RNS can be used for modulo arithmetic on very large integers. This algorithm is deterministic
 
@@ -75,6 +76,7 @@ def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable
             (e.g. 2^32 for 32 bit residues)
         multiple_of (Iterable, optional): ensure that RNS modulus is a multiple of these numbers
             default is None (so this is ignored)
+        scheme_SIMD_slot (int, optional): if this option is specified, the function attempts to create negacyclic NTT friendly primes
 
     Returns:
         np.ndarray: the residue basis
@@ -101,9 +103,21 @@ def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable
             current_product *= multiple
         if candidate < multiple:
             candidate = multiple+1
+    # generate a bunch of NTT friendly primes (or dont if scheme_SIMD_slots=None)
+    warnings.warn("NTT friedly prime generation code still has not been tested")
+    if scheme_SIMD_slots is not None:
+        # You usually set scheme_SIMD_slot = N (NTT length)
+        # We grab more primes than strictly needed and then take them one by one.
+        primes_needed = lower_bound//max_residue_size + 20
+        raise NotImplementedError("specify start_multiple=...")
+        ntt_friendly_candidates = [mp.q for mp in negacyclic_moduli(scheme_SIMD_slot, count=primes_needed)]#, start_multiple=)]
+        get_next_prime = lambda x: next(primes_iter)
+        candidate = next(primes_iter)
+    else:
+        get_next_prime = sympy.nextprime
     # accumulate primes
     while current_product < lower_bound:
-        candidate = sympy.nextprime(candidate)
+        candidate = get_next_prime(candidate)
         if candidate > max_residue_size:
             raise ValueError("Cannot reach lower_bound without exceeding max_residue_size")
         moduli.append(candidate)
