@@ -1,15 +1,14 @@
-#!/usr/bin/env python3
 """
 negacyclic-NTT friendly prime searcher
 Given a transform size n (usually a power of two) this script locates
 prime moduli q such that
       2n | (q-1)
-which guarantees the existence of a primitive 2n-th root of unity ψ.
-It then finds ψ and verifies      ψ^n = -1  (mod q).
-Such (q, ψ) can be used to implement an n-point negacyclic NTT
+which guarantees the existence of a primitive 2n-th root of unity psi.
+It then finds psi and verifies      psi^n = -1  (mod q).
+Such (q, psi) can be used to implement an n-point negacyclic NTT
 
 e.g.
-python make_prime.py -k 4000000 -c 100
+python ntt_friendly_prime.py -k 4000000 -c 100
 
 """
 
@@ -64,9 +63,7 @@ def _find_psi(q: int, n: int) -> int:
     return psi
 
 
-def negacyclic_moduli(n: int,
-                      count: int = 5,
-                      start_multiple: int = 1) -> List[NTTModulus]:
+def negacyclic_moduli_internal(n: int, count: int = 5, start_multiple: int = 1) -> List[NTTModulus]:
     """
     Search for the requested number of negacyclic-NTT friendly primes.
 
@@ -93,18 +90,28 @@ def negacyclic_moduli(n: int,
         psi = _find_psi(q, n)
 
         # Check the negacyclic conditions
-        if pow(psi, n, q) != q - 1:           # ψ^n ≡ -1  ?
+        if pow(psi, n, q) != q - 1: # psi^n ≡ -1  ?
             continue
-        if pow(psi, 2 * n, q) != 1:          # ψ^(2n) ≡ 1 ?
+        if pow(psi, 2 * n, q) != 1: # psi^(2n) ≡ 1 ?
             continue
-        if sympy.n_order(psi, q) != 2 * n:         # order exactly 2n?
+        if sympy.n_order(psi, q) != 2 * n: # order exactly 2n?
             continue
 
-        omega = pow(psi, 2, q)               # primitive n-th root
+        omega = pow(psi, 2, q) # primitive n-th root
         results.append(NTTModulus(q, psi, omega, n))
         if len(results) >= count:
             break
     return results
+
+
+def convert_primesize_to_kmultiple(prime_size: int, scheme_SIMD_slots: int) -> int:
+    #prime_size = (start_multiple)*(2*scheme_SIMD_slots)+1
+    start_multiple = (prime_size-1)//(2*scheme_SIMD_slots)
+    return start_multiple
+
+def negacyclic_moduli(n: int, count: int, prime_size: int) -> List[NTTModulus]:
+    start_multiple = convert_primesize_to_kmultiple(prime_size,n)
+    return negacyclic_moduli_internal(n,count,start_multiple)
 
 
 if __name__ == "__main__":
@@ -129,10 +136,7 @@ if __name__ == "__main__":
 
     print(f"Searching for {args.count} negacyclic-NTT friendly primes "
           f"for n = {args.n} ...\n")
-    for i, modulus in enumerate(negacyclic_moduli(args.n,
-                                                  count=args.count,
-                                                  start_multiple=args.kstart),
-                                1):
+    for i, modulus in enumerate(negacyclic_moduli(args.n, count=args.count, start_multiple=args.kstart), 1):
         print(f"[{i}] {modulus.q}")
         print(modulus)
         print("-" * 60)

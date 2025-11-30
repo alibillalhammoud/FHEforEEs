@@ -32,14 +32,14 @@ def bit_reverse_perm(n):
 def batch_encode_decode_matrices(n: int, t: int) -> tuple[np.ndarray,np.ndarray]:
     """returns a tuple with [0] encode matrix and [1] decode matrix"""
     assert is_prime(t) and (t - 1) % (2 * n) == 0, "bad modulus"
-    # build W_transpose  (decoding)  and  E = (W_transpose)^-1  (encoding) matrices
-    g      = sympy.primitive_root(t)
-    omega  = pow(g, (t - 1) // (2 * n), t) # primitive 2n-th root
-    alpha  = np.array([pow(omega, 2 * k + 1, t) for k in range(n)], dtype=object)
-    # Vandermonde in increasing powers:   (row i, col j) = α_i^j   (mod t)
+    # build W_transpose (decoding) and E = (W_transpose)^-1 (encoding) matrices
+    g = sympy.primitive_root(t)
+    omega = pow(g, (t - 1) // (2 * n), t) # primitive 2n-th root
+    alpha = np.array([pow(omega, 2 * k + 1, t) for k in range(n)], dtype=object)
+    # Vandermonde in increasing powers: (row i, col j) = alpha_i^j   (mod t)
     W_T = np.vander(alpha, N=n, increasing=True) % t # (n x n)
     # inverse with SymPy (modular)
-    E   = np.array(sympy.Matrix(W_T.tolist()).inv_mod(t).tolist(), dtype=object)
+    E = np.array(sympy.Matrix(W_T.tolist()).inv_mod(t).tolist(), dtype=object)
     return E, W_T
 
 def gen_uniform_rand_arr(lower_bound: int, upper_bound: int, size: int):
@@ -64,6 +64,14 @@ def nparr_int_round(dividend: np.ndarray, divisor: int) -> np.ndarray:
     assert divisor > 0, "divisor must be positive"
     half = divisor >> 1
     return (dividend+half) // divisor
+
+def _INTERNAL_get_next_prime(x, plistiter):
+    try:
+        next_x = next(plistiter)
+        assert next_x > x
+    except Exception:
+        raise RuntimeError("No more primes available or other error with get_next_prime") from None
+    return next_x
 
 def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable = None, scheme_SIMD_slots: int = None) -> np.ndarray:
     """Generates a valid ResidueNumberSystem basis (a set of co-prime integers)
@@ -106,22 +114,28 @@ def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable
     # generate a bunch of NTT friendly primes (or dont if scheme_SIMD_slots=None)
     warnings.warn("NTT friedly prime generation code still has not been tested")
     if scheme_SIMD_slots is not None:
-        # You usually set scheme_SIMD_slot = N (NTT length)
+        # You usually set scheme_SIMD_slots = N (NTT length)
         # We grab more primes than strictly needed and then take them one by one.
-        primes_needed = lower_bound//max_residue_size + 20
-        raise NotImplementedError("specify start_multiple=...")
-        ntt_friendly_candidates = [mp.q for mp in negacyclic_moduli(scheme_SIMD_slot, count=primes_needed)]#, start_multiple=)]
-        get_next_prime = lambda x: next(primes_iter)
-        candidate = next(primes_iter)
-    else:
-        get_next_prime = sympy.nextprime
+        primes_needed = int(math.ceil(math.log(lower_bound,max_residue_size))) + 20
+        prime_candidates_full_results = negacyclic_moduli(scheme_SIMD_slots, count=primes_needed, prime_size=min_residue_size)
+        ntt_friendly_candidates = sorted([mp.q for mp in prime_candidates_full_results])
+        assert ntt_friendly_candidates == sorted(ntt_friendly_candidates) and len(ntt_friendly_candidates) == len(set(ntt_friendly_candidates))
+        while candidate > ntt_friendly_candidates[0]:
+            if len(ntt_friendly_candidates) <= 1:
+                raise ValueError("No more NTT-friendly candidates available")
+            ntt_friendly_candidates.pop(0)
     # accumulate primes
+    i = 0
     while current_product < lower_bound:
-        candidate = get_next_prime(candidate)
+        if scheme_SIMD_slots is not None:
+            candidate = ntt_friendly_candidates[i]
+        else:
+            candidate = sympy.nextprime(candidate)
         if candidate > max_residue_size:
             raise ValueError("Cannot reach lower_bound without exceeding max_residue_size")
         moduli.append(candidate)
         current_product *= candidate
+        i+=1
     # error check
     assert all([is_prime(m) for m in moduli]), "non prime basis modulus produced"
     assert len(set(moduli))==len(moduli), "redundant basis primes"
@@ -155,30 +169,6 @@ def is_pairwise_coprime(arr) -> bool:
     return True
 
 
-def centered_mod(x, q):
-    """
-    Centered residue of x (scalar or array‑like) modulo q.
-
-    Returned range:
-        (-⌊q/2⌋ , ⌈q/2⌉]   for any positive integer q.
-    """
-    if q <= 0:
-        raise ValueError("Modulus q must be positive.")
-    # scalar
-    if np.isscalar(x):
-        r = x % q     # bring into [0, q-1]
-        if r > q // 2: # fold the upper half down
-            r -= q
-        return int(r)
-    #vect0r
-    arr = np.asarray(x) # 1‑D, 2‑D,anything works
-    r = np.mod(arr, q) # same shape as arr
-    mask = r > q // 2
-    r = r.astype(object, copy=False)  # allow big ints if q is big
-    r[mask] -= q
-    return r if isinstance(x, np.ndarray) else type(x)(r.tolist())
-
-
 class RNSInteger:
     def __init__(self, num: int, residue_basis: np.ndarray, scheme_modulus: int=None, center=False):
         """Represent num (integer) using RNS under the provided residue_basis
@@ -201,18 +191,20 @@ class RNSInteger:
         num = int(num)
         self.residues = np.array([num % m for m in self.basis], dtype=object)
     
-    # helper for building new instance from explicit residues
-    @staticmethod
-    def _from_residues(res_vec: Iterable[int], basis: Iterable[int]) -> "RNSInteger":
-        obj = RNSInteger(0, residue_basis=np.array(basis, dtype=object), scheme_modulus=int(np.prod(basis)))
-        obj.residues = np.array(res_vec, dtype=object)
-        return obj
     
     def assert_valid(self):
         assert isinstance(self.basis,np.ndarray), "self.basis must be np array"
         assert all([is_prime(m) for m in self.basis]), "non prime basis modulus found"
         assert self.modulus == np.prod(self.basis), "modulus not equal to product of basis"
         assert len(set(self.basis))==len(self.basis), "redundant basis primes"
+    
+    # helper for building new instance from explicit residues
+    @staticmethod
+    def _from_residues(res_vec: Iterable[int], basis: Iterable[int]) -> "RNSInteger":
+        obj = RNSInteger(0, residue_basis=np.array(basis, dtype=object), scheme_modulus=int(np.prod(basis)))
+        obj.residues = np.array(res_vec, dtype=object)
+        obj.assert_valid()
+        return obj
     
     def set_to_zero(self):
         self.residues = np.array([0 for m in self.basis], dtype=object)
@@ -239,16 +231,12 @@ class RNSInteger:
     def __add__(self, other):
         assert np.array_equal(self.basis, other.basis), "Basis mismatch in addition"
         new_residues = (self.residues + other.residues) % self.basis
-        result = RNSInteger(num=0, residue_basis=self.basis, scheme_modulus=self.modulus)
-        result.residues = new_residues
-        return result
+        return RNSInteger._from_residues(new_residues,self.basis)
 
     def __mul__(self, other):
         assert np.array_equal(self.basis, other.basis), "Basis mismatch in multiplication"
         new_residues = (self.residues * other.residues) % self.basis
-        result = RNSInteger(num=0, residue_basis=self.basis, scheme_modulus=self.modulus)
-        result.residues = new_residues
-        return result
+        return RNSInteger._from_residues(new_residues,self.basis)
     
     def __iadd__(self, other):
         assert np.array_equal(self.basis, other.basis), "Basis mismatch in addition"
@@ -263,9 +251,7 @@ class RNSInteger:
     def __sub__(self, other):
         assert np.array_equal(self.basis, other.basis), "Basis mismatch in subtraction"
         new_residues = (self.residues - other.residues) % self.basis
-        result = RNSInteger(num=0, residue_basis=self.basis, scheme_modulus=self.modulus)
-        result.residues = new_residues
-        return result
+        return RNSInteger._from_residues(new_residues,self.basis)
 
     def __isub__(self, other):
         assert np.array_equal(self.basis, other.basis), "Basis mismatch in subtraction"
@@ -283,90 +269,52 @@ class RNSInteger:
                 out[i] -= m # conditional subtraction
         return out
     
-    def fastBconv(self, target_basis: Iterable[int], zero_center: bool=True) -> "RNSInteger":
+    def fastBconv(self, target_basis: Iterable[int]) -> "RNSInteger":
         # precompute
         q = self.modulus
         y  = [q // qi for qi in self.basis] # yi = q/qi
+        y_mod_b = list()
+        for j, bj in enumerate(target_basis):
+            y_mod_b.append([yi % bj for yi in y])
         z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)] # zi = yi^{-1} mod qi
-        residues = self.residues
-        if zero_center:
-            z = RNSInteger._center(z,self.basis) # need the centered inverse apparently
-        #
         # Hardware step
-        if zero_center:
-            residues = RNSInteger._center(self.residues, self.basis)
-        a  = [(xi * zi) % qi for xi, zi, qi in zip(residues, z, self.basis)]  # ai
-        if zero_center:
-            a = RNSInteger._center(a,self.basis)
+        a  = [(xi * zi) % qi for xi, zi, qi in zip(self.residues, z, self.basis)]  # ai
         c_res = []
-        for bj in target_basis:
+        for j, bj in enumerate(target_basis):
             acc = 0
-            y_mod_bj = [yi % bj for yi in y]
-            for ai, yib in zip(a, y_mod_bj):
+            for ai, yib in zip(a, y_mod_b[j]):
                 psum = (ai * yib) % bj
                 acc = (acc + psum) % bj
             c_res.append(acc)
-        #
-        # result a python int (and more error checking)
-        result = RNSInteger(0, target_basis)
-        result.residues = np.array(c_res, dtype=object)
-        result.assert_valid()
-        self.assert_valid()
-        return result
+        # return RNSInteger
+        return RNSInteger._from_residues(c_res,target_basis)
 
-    def modswitch(self, drop_modulis) -> "RNSInteger":
-        """RNS-based modulus switching. Removes moduli in drop_modulis
-        and updates the residues in the remaining basis (q_i) accordingly.
-        Args:
-            drop_modulis: list of prime modulus values to drop (e.g. [b1, b2, ...])
-        Returns:
-            RNSInteger representing value modulo q (updated residues)
-        """
-        drop_modulis = set(int(v) for v in drop_modulis)
-        keep_indices = [i for i, m in enumerate(self.basis) if m not in drop_modulis]
-        drop_indices = [i for i, m in enumerate(self.basis) if m in drop_modulis]
-        assert len(drop_indices) > 0, "No basis elements to drop"
-        assert all(m in set(self.basis) for m in drop_modulis), "All dropped moduli must exist in basis"
-        q_basis = self.basis[keep_indices].astype(object)
-        q_residues = self.residues[keep_indices].astype(object)
-        b_basis = self.basis[drop_indices].astype(object)
-        b_residues = self.residues[drop_indices].astype(object)
-        # Compute |chi|_b from dropped residues and moduli
-        # Compute CRT (Chinese Remainder Theorem) for residues mod b
-        crt_int = int(sympy.ntheory.modular.crt(list(map(int, b_basis)), list(map(int, b_residues)))[0])
-        # Fast base conversion: Convert crt_int modulo b to RNS residues in q_basis
-        hat_chi = np.array([crt_int % int(q_i) for q_i in q_basis], dtype=object)  # hat_chi_i for each q_i
-        # precompute stuff
+    def modswitch(self, drop_modulis):
+        drop_modulis = list(map(int, drop_modulis))
+        keep_idx = [i for i,m in enumerate(self.basis) if m not in drop_modulis]
+        drop_idx = [i for i,m in enumerate(self.basis) if m in drop_modulis]
+        q_basis = self.basis[keep_idx].astype(object)
+        b_basis = self.basis[drop_idx].astype(object)
+        # Pre-compute constants
         b = int(np.prod(b_basis))
-        b_invs = list()
-        for i in range(len(q_basis)):
-            b_invs.append(sympy.mod_inverse(b, q_basis[i]))
-        #
-        # HARDWARE: For each modulus in q_basis, compute new residue
-        new_residues = []
-        for i in range(len(q_basis)):
-            # look up table
-            q_i = int(q_basis[i])
-            hat_chi_i = int(hat_chi[i])
-            b_inv = b_invs[i]
-            # hardware computation
-            chi_i = int(q_residues[i])
-            y_i = (b_inv * (chi_i - hat_chi_i)) % q_i
-            new_residues.append(y_i)
-        #
-        # return new RNSInteger object using the calculated basis
-        result = RNSInteger(num=0, residue_basis=q_basis, scheme_modulus=int(np.prod(q_basis)))
-        result.residues = np.array(new_residues, dtype=object)
-        return result
+        binv = [sympy.mod_inverse(b, qi) % qi for qi in q_basis]
+        # Fast base convert the "to-be-dropped" part onto the q-basis
+        x_B = RNSInteger._from_residues(self.residues[drop_idx], b_basis)
+        xhat_q = x_B.fastBconv(q_basis).residues
+        # Finish the mod-switch
+        new_res = []
+        for pos, qi in enumerate(q_basis):
+            chi  = int(self.residues[keep_idx[pos]])
+            delta = (chi - xhat_q[pos]) % qi
+            new_res.append( (binv[pos] * delta) % qi )
+        return RNSInteger._from_residues(new_res, q_basis)
         
-    def _moddrop(self, keep_moduli: Iterable[int], center_residues: bool=False) -> "RNSInteger":
+    def _moddrop(self, keep_moduli: Iterable[int]) -> "RNSInteger":
         keep_set = set(int(m) for m in keep_moduli)
         assert len(keep_moduli)==len(keep_set), "redundant basis not allowed"
         idx = [i for i, m in enumerate(self.basis) if m in keep_set]
         assert idx, "Resulting basis is empty (cant drop everything)"
         new_residues = self.residues[idx]
-        if center_residues:
-            new_residues = self._center(new_residues, self.basis[idx])
         return RNSInteger._from_residues(new_residues, self.basis[idx])
 
     def fastBconvEx(self, aux_modulis_B: Iterable[int], aux_modulis_Ba: Iterable[int], target_basis: Iterable[int]) -> "RNSInteger":
@@ -383,33 +331,28 @@ class RNSInteger:
         Ba_bigmodulus = np.prod(Ba)
         b_inv_Ba_bigint = sympy.mod_inverse(b_bigmodulus,Ba_bigmodulus)
         b_inv_Ba = np.array([b_inv_Ba_bigint % prime for prime in Ba], dtype=object)
-        #b_inv_Ba = np.array([sympy.mod_inverse(b_bigmodulus % int(p), int(p)) for p in Ba], dtype=object)
-        b_inv_Ba = RNSInteger._center(b_inv_Ba,Ba)
+        b_mod_q = np.array([b_bigmodulus % int(p) for p in q], dtype=object)
         #
         # step 1: mod drops
-        xB = self._moddrop(B, True) # residues only on B
-        xBa = self._moddrop(Ba, True) # residues only on Ba
+        xB = self._moddrop(B) # residues only on B
+        xBa = self._moddrop(Ba) # residues only on Ba
         # Step 2: compute gamma
-        # You may have realized that the BFV with RNS paper and the fhetextbook directly take gamma as a big int
+        # BFV with RNS paper and the fhetextbook directly take gamma as a big int
         # This is because gamma is bounded (small), ensuring it fits into a machine word
-        temp = (xB.fastBconv(Ba, zero_center=True).residues - xBa.residues) % Ba
-        temp = RNSInteger._center(temp, Ba)
+        temp = (xB.fastBconv(Ba).residues - xBa.residues) % Ba
         gamma_Ba = (temp * b_inv_Ba) % Ba # gamma in Ba basis
-        gamma_Ba = RNSInteger._center(gamma_Ba, Ba)
-        if abs(centered_mod(int(RNSInteger._from_residues(gamma_Ba,Ba)),Ba_bigmodulus))>(2**32):
-            raise ValueError("int too BIG!!!!!")
         # Step 3: convert gamma to the q basis (this is the correction term)
-        gamma_int, _ = sympy.ntheory.modular.crt(list(map(int, Ba)), list(map(int, gamma_Ba)), symmetric=True)
-        gamma_q = RNSInteger._from_residues(gamma_Ba, Ba).centeredBconv(q, zero_center=True).residues
+        gamma_q = RNSInteger._from_residues(gamma_Ba, Ba).centeredBconv(q).residues
         # Step 4: final exact conversion
-        xB_to_q = xB.fastBconv(q, zero_center=True).residues
-        b_mod_q = np.array([b_bigmodulus % int(p) for p in q], dtype=object)
+        xB_to_q = xB.fastBconv(q).residues
         result_residues = (xB_to_q - gamma_q * b_mod_q) % q
-        # check that I got the right answer
-        expected_result = self.centeredBconv(target_basis=target_basis).residues
+        # return and error checking (ensure gamma was not too big)
+        symreconst,_ = sympy.ntheory.modular.crt(list(map(int, Ba)), list(map(int, gamma_Ba)), symmetric=True)
+        if symreconst > (2**32):
+            raise ValueError("int too BIG!!!!!")
         return RNSInteger._from_residues(result_residues, q)
 
-    def centeredBconv(self, target_basis: Iterable[int],zero_center=True) -> "RNSInteger":
+    def centeredBconv(self, target_basis: Iterable[int]) -> "RNSInteger":
         """Convert the current representation to `target_basis`.
         A simple and *always correct* strategy is:
           1. Reconstruct the integer via CRT.

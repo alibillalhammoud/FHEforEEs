@@ -159,9 +159,6 @@ class BFVSchemeServer:
         D0 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D0], dtype=object)
         D1 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D1], dtype=object)
         D2 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D2], dtype=object)
-        #D0 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D0], dtype=object)
-        #D1 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D1], dtype=object)
-        #D2 = np.array([coef.centeredBconv(self.config.RNS_basis_q) for coef in D2], dtype=object)
         # Relinerization
         ctA, ctB = self._relinearization(D0, D1, D2, RLev)
         return ctA, ctB
