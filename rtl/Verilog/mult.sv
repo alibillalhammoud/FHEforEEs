@@ -1,8 +1,6 @@
 `include "types.svh"
 
 module mult(
-  input  logic clk,
-  input  logic reset,
   input vec_t a,
   input vec_t b,
   output wide_vec_t out
