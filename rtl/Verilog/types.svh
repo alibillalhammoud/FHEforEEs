@@ -37,12 +37,39 @@ typedef struct {
   vec_t B;   
 } CT_t;
 
+typedef enum logic [1:0] {
+    OP_CT_CT_ADD,
+    OP_CT_PT_ADD,
+    OP_CT_PT_MUL
+} op_e;
+
+typedef struct {
+  op_e mode;
+  logic [$clog2(NREG)-1:0] idx1_a,
+  logic [$clog2(NREG)-1:0] idx1_b,
+  logic [$clog2(NREG)-1:0] idx2_a,
+  logic [$clog2(NREG)-1:0] idx2_b,
+  logic [$clog2(NREG)-1:0] out_a,
+  logic [$clog2(NREG)-1:0] out_b,
+} operation;
+
 // Handy localparams
 localparam int unsigned N_SLOTS_L   = `N_SLOTS;
 localparam int unsigned W_BITS_L    = `W_BITS;
 localparam word_t        Q_MOD_L    = `Q_MOD;
 localparam word_t        T_MOD_L    = `T_MOD;
 localparam word_t        DELTA_L    = `DELTA;
+
+localparam vec_t twist_factor = '1;
+localparam vec_t untwist_factor = '1;
+
+localparam vec_t delta_gamma;
+genvar i;
+generate
+  for (i = 0; i < `N_SLOTS; i++) begin : GEN_MULT_DELTA
+    assign delta_gamma[i] = in_gamma[i] * `DELTA;
+  end
+endgenerate
 
 // ---------------------------
 // Register file shape
@@ -62,7 +89,6 @@ localparam int unsigned NREG     = NCIPHERS * NPOLY;
 
 // One residue value (one prime for one coefficient)
 typedef word_t coeff_t;
-
 // If you ever want to explicitly tag A vs B in code:
 typedef enum logic [0:0] {
   POLY_A = 1'b0,
