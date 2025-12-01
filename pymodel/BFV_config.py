@@ -22,6 +22,7 @@ class BFVSchemeConfiguration:
         # calculate an appropriate ct modulus (q), then get scaling factor (delta) and large mod (Q)
         # also init RNS
         max_residue_size = 2**32
+        self.residue_bits = int(math.ceil(math.log(max_residue_size,2)))
         desired_q_numbits = int(desired_q_numbits)
         approx_q_size = 2**desired_q_numbits
         self.RNS_basis_q = gen_RNS_basis(lower_bound=approx_q_size, max_residue_size=max_residue_size, multiple_of=[self.t], scheme_SIMD_slots=self.n)
@@ -111,4 +112,20 @@ class BFVSchemeConfiguration:
         mcol = m.reshape(self.n, 1)
         v = (self._WT @ mcol) % self.t
         return v.flatten()
+    
+    def print_verilog_format(self):
+        print("`define N_SLOTS =", self.n)
+        print("`define RNS_PRIME_BITS =", self.residue_bits)
+        print("`define t_MODULUS =",self.t)
+        # print RNS bases
+        basis_str = lambda arr: ', '.join(str(x) for x in arr)
+        print(f"`define q_BASIS {{{basis_str(self.RNS_basis_q)}}}")
+        print(f"`define q_BASIS_LEN {len(self.RNS_basis_q)}")
+        print("//`define q_MODULUS =",self.q)
+        print(f"`define B_BASIS {{{basis_str(self.RNS_basis_B)}}}")
+        print(f"`define B_BASIS_LEN {len(self.RNS_basis_B)}")
+        print("//`define B_MODULUS =",np.prod(self.RNS_basis_B))
+        print(f"`define Ba_BASIS {{{basis_str(self.RNS_basis_Ba)}}}")
+        print(f"`define Ba_BASIS_LEN {len(self.RNS_basis_Ba)}")
+        print("//`define Ba_MODULUS =",np.prod(self.RNS_basis_Ba))
 

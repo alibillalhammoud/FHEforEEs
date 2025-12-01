@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import argparse
+import math
 
 from BFV_config import BFVSchemeConfiguration
 from BFV_model import BFVSchemeClient, BFVSchemeServer
@@ -60,25 +61,32 @@ def run_test(op, client, server, v1, v2, pt, t, rlev):
     print("Test PASSED!" if success else "Test FAILED!")
     print()
 
+def generate_test_vectors(n, low=0, high=10):
+    """Generate random test vectors of given length n."""
+    v1 = np.random.randint(low, high, size=n)
+    v2 = np.random.randint(low, high, size=n)
+    pt = np.random.randint(low, high, size=n)
+    return v1, v2, pt
+
 def main():
     parser = argparse.ArgumentParser(
         description='Test BFV homomorphic encryption operations with configurable options.'
     )
     parser.add_argument('--t', type=int, default=257,
                         help='Plaintext modulus (prime number), default: 257')
-    parser.add_argument('--n', type=int, default=8,
-                        help='Polynomial degree (power of 2), default: 8')
-    parser.add_argument('--qbits', type=int, default=150,
-                        help='Bit-length of ciphertext modulus q, default: 150')
+    parser.add_argument('--n', type=int, default=128,
+                        help='Polynomial degree (power of 2), default: 128')
+    parser.add_argument('--qbits', type=int, default=300,
+                        help='Bit-length of ciphertext modulus q, default: 290')
     parser.add_argument('--vector1', type=parse_vector,
-                        default='1,2,3,4,5,6,7,8',
-                        help='First input vector (comma-separated), default: 1,2,3,4,5,6,7,8')
+                        default=None,
+                        help='First input vector (comma-separated). If omitted, random test vector is generated.')
     parser.add_argument('--vector2', type=parse_vector,
-                        default='2,3,4,5,4,3,2,3',
-                        help='Second input vector (comma-separated), default: 2,3,4,5,4,3,2,3')
+                        default=None,
+                        help='Second input vector (comma-separated). If omitted, random test vector is generated.')
     parser.add_argument('--plaintext', type=parse_vector,
-                        default='1,2,3,4,5,6,7,8',
-                        help='Plaintext vector for plaintext ops, default: 1,2,3,4,5,6,7,8')
+                        default=None,
+                        help='Plaintext vector for plaintext ops. If omitted, random test vector is generated.')
     parser.add_argument('--op', choices=[
         'add_cipherplain', 'add_ciphercipher', 'mul_cipherplain', 'mul_ciphercipher', 'all'
     ], default='mul_ciphercipher',
@@ -90,12 +98,31 @@ def main():
     config = BFVSchemeConfiguration(args.t, args.qbits, args.n, False)
     client = BFVSchemeClient(config)
     server = BFVSchemeServer(config)
-    rlev = client.relin_keys
+    # Print current config in verilog format
+    config.print_verilog_format()
+    # Generate test arrays of length n if vectors not supplied
+    if args.vector1 is None or args.vector2 is None or args.plaintext is None:
+        v1, v2, pt = generate_test_vectors(args.n)
+    else:
+        # Make sure input vectors have the correct length, resize or pad if necessary
+        def fix_len(v):
+            v = np.array(v)
+            if v.size < args.n:
+                # Pad with zeros
+                return np.pad(v, (0, args.n-v.size))
+            elif v.size > args.n:
+                # Trim the vector
+                return v[:args.n]
+            else:
+                return v
+        v1 = fix_len(args.vector1)
+        v2 = fix_len(args.vector2)
+        pt = fix_len(args.plaintext)
 
     ops = ['add_cipherplain', 'add_ciphercipher', 'mul_cipherplain', 'mul_ciphercipher'] if args.op == 'all' else [args.op]
 
     for op in ops:
-        run_test(op, client, server, args.vector1, args.vector2, args.plaintext, args.t, rlev)
+        run_test(op, client, server, v1, v2, pt, args.t, client.relin_keys)
 
 if __name__ == "__main__":
     main()
