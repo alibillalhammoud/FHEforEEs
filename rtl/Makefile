@@ -17,6 +17,19 @@ DUT_CPU = verilog/cpu.sv \
 TB_CPU  = test/cpu_test.sv
 SIM_CPU = $(SIMDIR)/simv_cpu
 
+# ---- Files for NTT pipeline tests ----
+# Core NTT design (butterfly + block)
+DUT_NTT_CORE = verilog/ntt_butterfly.sv \
+               verilog/ntt_full.sv
+
+# Full poly-mult pipeline testbench
+TB_NTT_FULL  = test/tb_full_mult.sv
+SIM_NTT_FULL = $(SIMDIR)/simv_ntt_full
+
+# Simple NTT testbench (big modulus)
+TB_NTT_BIG   = test/tb_big.sv
+SIM_NTT_BIG  = $(SIMDIR)/simv_ntt_big
+
 # ---- Synthesis config ----
 LIB            = /usr/caen/misc/class/eecs470/lib/verilog/lec25dscc25.v
 SYNTH_DIR      = synth
@@ -133,6 +146,7 @@ run-ctct: $(SIM_CTCT)
 run-ctpt: $(SIM_CTPT)
 	$(SIM_CTPT)
 
+# ---- regfile unit test ----
 DUT_RF   = verilog/regfile.sv
 TB_RF    = test/tb_regfile.sv
 SIM_RF   = $(SIMDIR)/simv_regfile
@@ -150,7 +164,37 @@ $(SIM_RF): $(DUT_RF) $(TB_RF)
 run-regfile: $(SIM_RF)
 	$(SIM_RF)
 
-run-all: run-ctct run-ctpt run-ctptmult run-modsingle run-modvector run-regfile run-cpu
+# ---- NTT sims ----
+
+# Full poly-mult pipeline (tb_full_mult.sv)
+$(SIM_NTT_FULL): $(DUT_NTT_CORE) $(TB_NTT_FULL)
+	@mkdir -p $(SIMDIR) $(SIMDIR)/csrc
+	module load vcs/2023.12-SP2-1 || true
+	vcs -sverilog -full64 -timescale=1ns/1ps \
+	    +incdir+verilog +incdir+test \
+	    -Mdir=$(SIMDIR)/csrc -o $(SIM_NTT_FULL) \
+	    -debug_access+all +v2k \
+	    $(TB_NTT_FULL) $(DUT_NTT_CORE)
+
+.PHONY: run-ntt-full
+run-ntt-full: $(SIM_NTT_FULL)
+	$(SIM_NTT_FULL)
+
+# Simple NTT behavior / latency test (tb_big.sv)
+$(SIM_NTT_BIG): $(DUT_NTT_CORE) $(TB_NTT_BIG)
+	@mkdir -p $(SIMDIR) $(SIMDIR)/csrc
+	module load vcs/2023.12-SP2-1 || true
+	vcs -sverilog -full64 -timescale=1ns/1ps \
+	    +incdir+verilog +incdir+test \
+	    -Mdir=$(SIMDIR)/csrc -o $(SIM_NTT_BIG) \
+	    -debug_access+all +v2k \
+	    $(DUT_NTT_CORE) $(TB_NTT_BIG)
+
+.PHONY: run-ntt-big
+run-ntt-big: $(SIM_NTT_BIG)
+	$(SIM_NTT_BIG)
+
+run-all: run-ctct run-ctpt run-ctptmult run-modsingle run-modvector run-regfile run-cpu run-ntt-full run-ntt-big
 
 # ---- Synthesis for ct_ct_add ----
 
@@ -191,8 +235,9 @@ $(SYNTH_MULT): verilog/mult.sv $(TCL_MULT) | synth
 synth-mult: $(SYNTH_MULT)
 
 # ---- Synthesis for ntt_butterfly ----
+# (assumes your DC script uses ntt_butterfly_2stage as the top)
 
-$(SYNTH_NTT): verilog/ntt_butt.sv $(TCL_NTT) | synth
+$(SYNTH_NTT): verilog/ntt_butterfly.sv $(TCL_NTT) | synth
 	@echo "Synthesizing ntt_butterfly with Design Compiler..."
 	cd $(SYNTH_DIR) && \
 	dc_shell-t -f $(notdir $(TCL_NTT)) | tee ntt_butt_synth.out
