@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
     print(f"Searching for {args.count} negacyclic-NTT friendly primes "
           f"for n = {args.n} ...\n")
-    for i, modulus in enumerate(negacyclic_moduli(args.n, count=args.count, start_multiple=args.kstart), 1):
+    for i, modulus in enumerate(negacyclic_moduli_internal(args.n, count=args.count, start_multiple=args.kstart), 1):
         print(f"[{i}] {modulus.q}")
         print(modulus)
         print("-" * 60)
