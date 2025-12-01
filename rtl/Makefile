@@ -7,6 +7,16 @@ SIMDIR    = build
 SIM_CTCT  = $(SIMDIR)/simv_ctct
 SIM_CTPT  = $(SIMDIR)/simv_ctpt
 
+# ---- Files for cpu + regfile top-level test ----
+DUT_CPU = verilog/cpu.sv \
+          verilog/regfile.sv \
+          verilog/adder.sv \
+          verilog/mult.sv \
+          verilog/mod_single.sv \
+          verilog/mod_vector.sv
+TB_CPU  = test/cpu_test.sv
+SIM_CPU = $(SIMDIR)/simv_cpu
+
 # ---- Synthesis config ----
 LIB            = /usr/caen/misc/class/eecs470/lib/verilog/lec25dscc25.v
 SYNTH_DIR      = synth
@@ -48,6 +58,19 @@ $(SIM_CTCT): $(DUT_CTCT) $(TB_CTCT)
 	    -debug_access+all +v2k \
 	    $(DUT_CTCT) $(TB_CTCT)
 
+# ---- CPU + regfile sim ----
+$(SIM_CPU): $(DUT_CPU) $(TB_CPU)
+	@mkdir -p $(SIMDIR) $(SIMDIR)/csrc
+	module load vcs/2023.12-SP2-1 || true
+	vcs -sverilog -full64 -timescale=1ns/1ps \
+	    +incdir+verilog +incdir+test \
+	    -Mdir=$(SIMDIR)/csrc -o $(SIM_CPU) \
+	    -debug_access+all +v2k \
+	    $(DUT_CPU) $(TB_CPU)
+
+.PHONY: run-cpu
+run-cpu: $(SIM_CPU)
+	$(SIM_CPU)
 
 # ---- Files for ct_pt_mult ----
 DUT_CTPTM = verilog/ct_pt_mult.sv
@@ -67,7 +90,6 @@ $(SIM_CTPTM): $(DUT_CTPTM) $(TB_CTPTM)
 run-ctptmult: $(SIM_CTPTM)
 	$(SIM_CTPTM)
 
-
 # ---- Files for mod_single test ----
 DUT_MODS   = verilog/mod_single.sv
 TB_MODS    = test/tb_mod_single.sv
@@ -85,7 +107,6 @@ $(SIM_MODS): $(DUT_MODS) $(TB_MODS)
 .PHONY: run-modsingle
 run-modsingle: $(SIM_MODS)
 	$(SIM_MODS)
-
 
 # ---- Files for mod_vector test ----
 DUT_MV   = verilog/mod_vector.sv
@@ -129,9 +150,7 @@ $(SIM_RF): $(DUT_RF) $(TB_RF)
 run-regfile: $(SIM_RF)
 	$(SIM_RF)
 
-
-run-all: run-ctct run-ctpt run-ctptmult run-modsingle run-modvector run-regfile
-
+run-all: run-ctct run-ctpt run-ctptmult run-modsingle run-modvector run-regfile run-cpu
 
 # ---- Synthesis for ct_ct_add ----
 
