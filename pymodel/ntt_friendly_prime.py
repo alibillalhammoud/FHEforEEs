@@ -47,7 +47,7 @@ def _candidate_primes(n: int, start_multiple: int = 1) -> Iterator[int]:
 def _find_psi(q: int, n: int) -> int:
     """
     Given a prime q satisfying 2n | (q-1), return a primitive 2n-th root ψ.
-    A generator 'g' of F_q^× has order q-1; raise it to (q-1)/(2n).
+    A generator 'g' of F_q^x has order q-1; raise it to (q-1)/(2n).
     """
     g = sympy.primitive_root(q)  # a generator of (Z/qZ)^×
     exponent = (q - 1) // (2 * n)

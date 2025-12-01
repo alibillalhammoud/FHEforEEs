@@ -4,7 +4,6 @@ import numpy as np
 import math
 import random
 from collections.abc import Iterable
-import warnings
 import copy
 from ntt_friendly_prime import negacyclic_moduli
 
@@ -112,7 +111,6 @@ def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable
         if candidate < multiple:
             candidate = multiple+1
     # generate a bunch of NTT friendly primes (or dont if scheme_SIMD_slots=None)
-    warnings.warn("NTT friedly prime generation code still has not been tested")
     if scheme_SIMD_slots is not None:
         # You usually set scheme_SIMD_slots = N (NTT length)
         # We grab more primes than strictly needed and then take them one by one.
@@ -290,24 +288,25 @@ class RNSInteger:
         return RNSInteger._from_residues(c_res,target_basis)
 
     def modswitch(self, drop_modulis):
+        """going from a bigger basis (d and f) to a subset basis f"""
         drop_modulis = list(map(int, drop_modulis))
         keep_idx = [i for i,m in enumerate(self.basis) if m not in drop_modulis]
         drop_idx = [i for i,m in enumerate(self.basis) if m in drop_modulis]
-        q_basis = self.basis[keep_idx].astype(object)
-        b_basis = self.basis[drop_idx].astype(object)
+        f_basis = self.basis[keep_idx].astype(object)
+        d_basis = self.basis[drop_idx].astype(object)
         # Pre-compute constants
-        b = int(np.prod(b_basis))
-        binv = [sympy.mod_inverse(b, qi) % qi for qi in q_basis]
+        d = int(np.prod(d_basis))
+        finv = [sympy.mod_inverse(d, fi) % fi for fi in f_basis]
         # Fast base convert the "to-be-dropped" part onto the q-basis
-        x_B = RNSInteger._from_residues(self.residues[drop_idx], b_basis)
-        xhat_q = x_B.fastBconv(q_basis).residues
+        x_d = RNSInteger._from_residues(self.residues[drop_idx], d_basis)
+        xhat_f = x_d.fastBconv(f_basis).residues
         # Finish the mod-switch
         new_res = []
-        for pos, qi in enumerate(q_basis):
+        for pos, fi in enumerate(f_basis):
             chi  = int(self.residues[keep_idx[pos]])
-            delta = (chi - xhat_q[pos]) % qi
-            new_res.append( (binv[pos] * delta) % qi )
-        return RNSInteger._from_residues(new_res, q_basis)
+            delta = (chi - xhat_f[pos]) % fi
+            new_res.append( (finv[pos] * delta) % fi )
+        return RNSInteger._from_residues(new_res, f_basis)
         
     def _moddrop(self, keep_moduli: Iterable[int]) -> "RNSInteger":
         keep_set = set(int(m) for m in keep_moduli)
@@ -341,7 +340,7 @@ class RNSInteger:
         # This is because gamma is bounded (small), ensuring it fits into a machine word
         temp = (xB.fastBconv(Ba).residues - xBa.residues) % Ba
         gamma_Ba = (temp * b_inv_Ba) % Ba # gamma in Ba basis
-        # Step 3: convert gamma to the q basis (this is the correction term)
+        # Step 3: convert gamma to the q basis in INT form (this is the correction term)
         gamma_q = RNSInteger._from_residues(gamma_Ba, Ba).centeredBconv(q).residues
         # Step 4: final exact conversion
         xB_to_q = xB.fastBconv(q).residues
