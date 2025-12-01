@@ -1,22 +1,52 @@
 `include "types.svh"
 
 module mult(
-  input vec_t a,
-  input vec_t b,
-  output wide_vec_t out
+  // input a
+  input q_BASIS_poly a_q,
+  input B_BASIS_poly a_b,
+  input Ba_BASIS_poly a_ba,
+  // input b
+  input q_BASIS_poly b_q,
+  input B_BASIS_poly b_b,
+  input q_BASIS_poly b_ba,
+  // output = a*b % q / a*b % Ba / a*b % Ba
+  output q_BASIS_poly out_q,
+  output B_BASIS_poly out_b,
+  output q_BASIS_poly out_ba,
 );
 
-parameter int unsigned WWP = 2*`RNS_PRIME_BITS + 1;
+// temp wires
+wide_q_BASIS_poly out_premod_q;
+wide_B_BASIS_poly out_premod_B;
+wide_Ba_BASIS_poly out_premod_Ba;
 
-genvar i;
-  generate
-    for (i = 0; i < `N_SLOTS; i++) begin : GEN_MUL
-      wide_rns_residue_t  prod_u;
-      logic [WWP-1:0] prod_w;
-      assign prod_u = $unsigned(a[i]) * $unsigned(b[i]);
-      assign prod_w = { {1'b0}, prod_u };
-      assign out[i] = prod_w;
+// generat the multipliers
+genvar i, j;
+generate : q_BASIS_MUL
+  for (i = 0; i < `N_SLOTS; i++) begin
+    for (j=0; j < `q_BASIS_LEN; j++) begin
+      assign out_premod_q[i][j] = a_q[i][j] * b_q[i][j];
+      assign out_q[i][j] = out_premod_q[i][j] % q_BASIS[j];
     end
-  endgenerate
+  end
+endgenerate
+//
+generate : B_BASIS_MUL
+  for (i = 0; i < `N_SLOTS; i++) begin
+    for (j=0; j < `B_BASIS_LEN; j++) begin
+      assign out_premod_B[i][j] = a_b[i][j] * b_b[i][j];
+      assign out_b[i][j] = out_premod_B[i][j] % B_BASIS[j];
+    end
+  end
+endgenerate
+//
+generate : Ba_BASIS_MUL
+  for (i = 0; i < `N_SLOTS; i++) begin
+    for (j=0; j < `Ba_BASIS_LEN; j++) begin
+      assign out_premod_Ba[i][j] = a_ba[i][j] * b_ba[i][j];
+      assign out_ba[i][j] = out_premod_Ba[i][j] % Ba_BASIS[j];
+    end
+  end
+endgenerate
 
 endmodule

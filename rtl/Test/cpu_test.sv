@@ -21,7 +21,7 @@ module tb_cpu;
 // =========================================================
   // Task: write regfile entry (Backdoor access to 4D Memory)
   // =========================================================
-  task write_reg(input int cipher_idx, input vec_t A, input vec_t B);
+  task write_reg(input int cipher_idx, input q_BASIS_poly A, input q_BASIS_poly B);
     // We refer to the DUT parameters to ensure loop bounds match the HW definition
     // Accessing u_cpu.u_rf allows us to use the specific NCOEFF/NPRIMES of that instance
     int flat_idx;
@@ -29,7 +29,7 @@ module tb_cpu;
     for (int c = 0; c < NCOEFF; c++) begin
       for (int p = 0; p < NPRIMES; p++) begin
         
-        // Calculate the flat index for vec_t
+        // Calculate the flat index for q_BASIS_poly
         // Must match the logic in regfile: flat_idx = c * NPRIMES + p
         flat_idx = c * NPRIMES + p;
 
@@ -46,7 +46,7 @@ module tb_cpu;
   // =========================================================
   // Task: read regfile entry (Backdoor access to 4D Memory)
   // =========================================================
-  task read_reg(input int cipher_idx, output vec_t A, output vec_t B);
+  task read_reg(input int cipher_idx, output q_BASIS_poly A, output q_BASIS_poly B);
     int flat_idx;
 
     // Initialize defaults to avoid X propagation if partial reads occur
@@ -70,11 +70,7 @@ module tb_cpu;
 
   // Wait until done_out == 1
   task wait_done();
-    @(posedge clk);
-    @(posedge clk);
-    @(posedge clk);
-    @(posedge clk);
-    // while (!done_out) @(posedge clk);
+    while (!done_out) @(posedge clk);
     @(posedge clk); // allow writeback to settle
   endtask
 
@@ -82,7 +78,7 @@ module tb_cpu;
   // Task: Compare two vectors
   // Returns 1 if equal, 0 if mismatch
   // ================================
-  function automatic logic compare_vecs(string name, vec_t act, vec_t exp);
+  function automatic logic compare_vecs(string name, q_BASIS_poly act, q_BASIS_poly exp);
     compare_vecs = 1'b1;
     foreach(act[i]) begin
       if (act[i] !== exp[i]) begin
@@ -99,15 +95,15 @@ module tb_cpu;
   // =========================================================
   initial begin
 
-    vec_t CT1_A = '{default: 5};
-    vec_t CT1_B = '{default: 10};
-    vec_t CT2_A = '{default: 7};
-    vec_t CT2_B = '{default: 3};
+    q_BASIS_poly CT1_A = '{default: 5};
+    q_BASIS_poly CT1_B = '{default: 10};
+    q_BASIS_poly CT2_A = '{default: 7};
+    q_BASIS_poly CT2_B = '{default: 3};
 
-    vec_t PT   = '{default: 4};   // plaintext
-    vec_t DELTA = '{default: `DELTA};
-    vec_t outA, outB;
-    vec_t gold_A, gold_B;
+    q_BASIS_poly PT   = '{default: 4};   // plaintext
+    q_BASIS_poly DELTA = '{default: `DELTA};
+    q_BASIS_poly outA, outB;
+    q_BASIS_poly gold_A, gold_B;
     logic match_A, match_B;
 
     clk = 0;

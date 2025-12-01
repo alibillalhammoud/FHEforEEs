@@ -1,16 +1,18 @@
 `include "types.svh"
 
 module adder(
-  input vec_t a,
-  input vec_t b,
-  output wide_vec_t out
+  input q_BASIS_poly a,
+  input q_BASIS_poly b,
+  output q_BASIS_poly out
 );
 
-  genvar i;
+  genvar i, j;
   generate
     for (i = 0; i < `N_SLOTS; i++) begin : GEN_ADD
-      assign out[i] = {1'b0, a[i]} + {1'b0, b[i]};
-    end
+      for (j=0; j < `q_BASIS_LEN; j++) begin
+          assign out[i][j] = (a[i][j] + b[i][j]) > q_BASIS[j] ? (a[i][j] + b[i][j]) - q_BASIS[i] : (a[i][j] + b[i][j]);
+        end
+      end
   endgenerate
 
 endmodule;
