@@ -4,7 +4,6 @@ module cpu (
   input  logic clk,
   input  logic reset,
   input  operation op,
-  input logic start,
   output logic done_out
 );
 
@@ -12,12 +11,12 @@ module cpu (
   //  Register file interface
   // ============================
 
-  logic [$clog2(REG_NPOLY)-1:0] source0_register_index_q;
-  logic [$clog2(REG_NPOLY)-1:0] source1_register_index_q;
-  logic [$clog2(REG_NPOLY)-1:0] source2_register_index_q;
-  logic [$clog2(REG_NPOLY)-1:0] source3_register_index_q;
-  logic [$clog2(REG_NPOLY)-1:0] dest0_register_index_q;
-  logic [$clog2(REG_NPOLY)-1:0] dest1_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] source0_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] source1_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] source2_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] source3_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] dest0_register_index_q;
+  logic [$clog2(`REG_NPOLY)-1:0] dest1_register_index_q;
 
   logic   source0_valid_q, source1_valid_q, source2_valid_q, source3_valid_q;
   q_BASIS_poly   source0_poly_q, source1_poly_q;
@@ -35,6 +34,23 @@ module cpu (
   logic [3:0] stage;   // your CT-PT-MUL micro-FSM state
   logic       inverse; // NTT direction flag
   logic     wb_0_q, wb_1_q, done;
+
+  q_BASIS_poly   op_a_q, op_b_q, op_c_q, op_d_q;
+  B_BASIS_poly   op_a_b, op_b_b, op_c_b, op_d_b;
+  Ba_BASIS_poly  op_a_ba, op_b_ba, op_c_ba, op_d_ba;
+
+  q_BASIS_poly  add_out_1, add_out_2, mul_out_1_q, mul_out_2_q, fu_out_1_q, fu_out_2_q, ntt_out_1_q, ntt_out_2_q;
+  B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b;
+  Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba;
+
+  logic stage1_valid;
+  q_BASIS_poly stage1_src0_q;
+  q_BASIS_poly stage1_src1_q;
+  q_BASIS_poly stage1_src2_q;
+  q_BASIS_poly stage1_src3_q;
+  op_e stage1_op_mode;
+  logic [$clog2(`REG_NPOLY)-1:0] stage1_dest0_idx;
+  logic [$clog2(`REG_NPOLY)-1:0] stage1_dest1_idx;
 
   // Parse Instruction
   always_comb begin
@@ -55,7 +71,10 @@ module cpu (
   //  Instantiate register file
   // ============================
 
-  regfile u_rf_q (
+  regfile #(
+    .NPRIMES(`q_BASIS_LEN)
+  ) u_rf_q (
+  
     .clk                 (clk),
     
     .source0_register_index (source0_register_index_q),
@@ -98,8 +117,8 @@ module cpu (
       stage1_op_mode    <= OP_CT_CT_ADD;
       stage1_dest0_idx  <= '0;
       stage1_dest1_idx  <= '0;
-      dest0_poly_q      <= '0;
-      dest1_poly_q      <= '0;
+      dest0_poly_q      <= '{default: '0};
+      dest1_poly_q      <= '{default: '0};
       done_out          <= '0;
       stage             <= '0;
     end else begin
@@ -125,26 +144,18 @@ module cpu (
   //  Functional Units
   // ============================
 
-  q_BASIS_poly   op_a_q, op_b_q, op_c_q, op_d_q;
-  B_BASIS_poly   op_a_b, op_b_b, op_c_b, op_d_b;
-  Ba_BASIS_poly  op_a_ba, op_b_ba, op_c_ba, op_d_ba;
-
-  q_BASIS_poly  add_out_1, add_out_2, mul_out_1_q, mul_out_2_q, fu_out_1_q, fu_out_2_q;
-  B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b;
-  Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba;
-
   // ADDER 1
   adder u_add_1 (
     .a   (op_a_q),
     .b   (op_b_q),
-    .out (add_out_1_q)
+    .out (add_out_1)
   );
 
   // ADDER 2
   adder u_add_2 (
     .a   (op_c_q),
     .b   (op_d_q),
-    .out (add_out_2_q)
+    .out (add_out_2)
   );
 
   // MULT 1
@@ -156,8 +167,8 @@ module cpu (
     .b_b  (op_b_b),
     .b_ba (op_b_ba),
     .out_q (mul_out_1_q),
-    .out_q (mul_out_1_b),
-    .out_q (mul_out_1_ba),
+    .out_b (mul_out_1_b),
+    .out_ba (mul_out_1_ba)
   );
 
   // MULT 2
@@ -169,8 +180,8 @@ module cpu (
     .b_b  (op_d_b),
     .b_ba (op_d_ba),
     .out_q (mul_out_2_q),
-    .out_q (mul_out_2_b),
-    .out_q (mul_out_2_ba),
+    .out_b (mul_out_2_b),
+    .out_ba (mul_out_2_ba)
   );
 
   // NTT 1 & 2 (stubbed for now)
@@ -207,10 +218,10 @@ module cpu (
         end
 
         OP_CT_PT_ADD: begin
-          op_a       = stage1_src0_q;  // CT1.A           
-          op_b       = '0;  // 
-          op_c       = stage1_src0_q; // CT1.B     
-          op_d       = stage1_src2_q; // Scaled PT            
+          op_a_q       = stage1_src0_q;  // CT1.A           
+          op_b_q       = '{default: '0};  // 
+          op_c_q       = stage1_src0_q; // CT1.B     
+          op_d_q       = stage1_src2_q; // Scaled PT            
           fu_out_1_q = add_out_1;
           fu_out_2_q = add_out_2;    
           wb_0_q     = 1;                

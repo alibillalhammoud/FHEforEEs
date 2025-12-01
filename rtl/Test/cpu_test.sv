@@ -18,56 +18,6 @@ module tb_cpu;
   // Clock
   always #5 clk = ~clk;
 
-// =========================================================
-  // Task: write regfile entry (Backdoor access to 4D Memory)
-  // =========================================================
-  task write_reg(input int cipher_idx, input q_BASIS_poly A, input q_BASIS_poly B);
-    // We refer to the DUT parameters to ensure loop bounds match the HW definition
-    // Accessing u_cpu.u_rf allows us to use the specific NCOEFF/NPRIMES of that instance
-    int flat_idx;
-
-    for (int c = 0; c < NCOEFF; c++) begin
-      for (int p = 0; p < NPRIMES; p++) begin
-        
-        // Calculate the flat index for q_BASIS_poly
-        // Must match the logic in regfile: flat_idx = c * NPRIMES + p
-        flat_idx = c * NPRIMES + p;
-
-        // Write Poly 0 (A)
-        // mem[cipher][poly][coeff][prime]
-        u_cpu.u_rf.mem[cipher_idx][0][c][p] = A[flat_idx];
-
-        // Write Poly 1 (B)
-        u_cpu.u_rf.mem[cipher_idx][1][c][p] = B[flat_idx];
-      end
-    end
-  endtask
-
-  // =========================================================
-  // Task: read regfile entry (Backdoor access to 4D Memory)
-  // =========================================================
-  task read_reg(input int cipher_idx, output q_BASIS_poly A, output q_BASIS_poly B);
-    int flat_idx;
-
-    // Initialize defaults to avoid X propagation if partial reads occur
-    A = '{default: '0};
-    B = '{default: '0};
-
-    for (int c = 0; c < NCOEFF; c++) begin
-      for (int p = 0; p < NPRIMES; p++) begin
-        
-        // Calculate the flat index
-        flat_idx = c * NPRIMES + p;
-
-        // Read Poly 0 (A)
-        A[flat_idx] = u_cpu.u_rf.mem[cipher_idx][0][c][p];
-
-        // Read Poly 1 (B)
-        B[flat_idx] = u_cpu.u_rf.mem[cipher_idx][1][c][p];
-      end
-    end
-  endtask
-
   // Wait until done_out == 1
   task wait_done();
     while (!done_out) @(posedge clk);
@@ -101,7 +51,6 @@ module tb_cpu;
     q_BASIS_poly CT2_B = '{default: 3};
 
     q_BASIS_poly PT   = '{default: 4};   // plaintext
-    q_BASIS_poly DELTA = '{default: `DELTA};
     q_BASIS_poly outA, outB;
     q_BASIS_poly gold_A, gold_B;
     logic match_A, match_B;
@@ -121,9 +70,11 @@ module tb_cpu;
     // REG2 = PT
     // =======================================================
 
-    write_reg(0, CT1_A, CT1_B);
-    write_reg(1, CT2_A, CT2_B);
-    write_reg(2, PT, '{default:0});
+    u_cpu.u_rf_q.mem[0] = CT1_A;
+    u_cpu.u_rf_q.mem[1] = CT1_B;
+    u_cpu.u_rf_q.mem[2] = CT2_A;
+    u_cpu.u_rf_q.mem[3] = CT2_B;
+    u_cpu.u_rf_q.mem[4] = PT;
 
     $display("==== Starting CPU Testbench ====");
 
@@ -134,17 +85,17 @@ module tb_cpu;
 
     op.mode  = OP_CT_CT_ADD;
     op.idx1_a = 0; // CT1.A
-    op.idx1_b = 0; // CT1.B
-    op.idx2_a = 1; // CT2.A
-    op.idx2_b = 1; // CT2.B
-    op.out_a  = 3; // result stored in reg3
-    op.out_b  = 3; // both A and B of reg3
+    op.idx1_b = 1; // CT1.B
+    op.idx2_a = 2; // CT2.A
+    op.idx2_b = 3; // CT2.B
+    op.out_a  = 4; // result stored in reg3
+    op.out_b  = 5; // both A and B of reg3
 
     @(posedge clk);
     wait_done();
 
-    
-    read_reg(3, outA, outB);
+    outA = u_cpu.u_rf_q.mem[4];
+    outB = u_cpu.u_rf_q.mem[5];
 
     foreach(gold_A[i]) begin
         gold_A[i] = CT1_A[i] + CT2_A[i];

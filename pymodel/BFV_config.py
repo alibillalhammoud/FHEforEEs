@@ -113,19 +113,31 @@ class BFVSchemeConfiguration:
         v = (self._WT @ mcol) % self.t
         return v.flatten()
     
+    def _vfrnspa(self, listin):
+        strout = str()
+        for ele in listin:
+            strout += "`RNS_PRIME_BITS\'d" + str(ele)
+            strout += ", "
+        strout = strout.removeprefix(", ")
+        return strout
+    
     def print_verilog_format(self):
         print("`define N_SLOTS =", self.n)
         print("`define RNS_PRIME_BITS =", self.residue_bits)
         print("`define t_MODULUS =",self.t)
         # print RNS bases
-        basis_str = lambda arr: ', '.join(str(x) for x in arr)
-        print(f"`define q_BASIS {{{basis_str(self.RNS_basis_q)}}}")
+        print(f"parameter logic [`RNS_PRIME_BITS-1:0] q_BASIS {{{self._vfrnspa(self.RNS_basis_q)}}}")
         print(f"`define q_BASIS_LEN {len(self.RNS_basis_q)}")
         print("//`define q_MODULUS =",self.q)
-        print(f"`define B_BASIS {{{basis_str(self.RNS_basis_B)}}}")
+        print(f"parameter logic [`RNS_PRIME_BITS-1:0] B_BASIS {{{self._vfrnspa(self.RNS_basis_B)}}}")
         print(f"`define B_BASIS_LEN {len(self.RNS_basis_B)}")
         print("//`define B_MODULUS =",np.prod(self.RNS_basis_B))
-        print(f"`define Ba_BASIS {{{basis_str(self.RNS_basis_Ba)}}}")
+        print(f"parameter logic [`RNS_PRIME_BITS-1:0] Ba_BASIS {{{self._vfrnspa(self.RNS_basis_Ba)}}}")
         print(f"`define Ba_BASIS_LEN {len(self.RNS_basis_Ba)}")
         print("//`define Ba_MODULUS =",np.prod(self.RNS_basis_Ba))
+        # print base conversion inverses (precomputed values)
+        #q = self.modulus
+        #y  = [q // qi for qi in self.basis] # yi = q/qi
+        #z_q_to_qBBa = z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)]
+
 

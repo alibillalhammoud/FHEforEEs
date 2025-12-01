@@ -11,8 +11,7 @@ SIM_CTPT  = $(SIMDIR)/simv_ctpt
 DUT_CPU = verilog/cpu.sv \
           verilog/regfile.sv \
           verilog/adder.sv \
-          verilog/mult.sv \
-          verilog/mod_vector.sv
+          verilog/mult.sv
 TB_CPU  = test/cpu_test.sv
 SIM_CPU = $(SIMDIR)/simv_cpu
 
