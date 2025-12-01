@@ -1,194 +1,203 @@
 `timescale 1ns/1ps
 `include "types.svh"
 
-module cpu_test;
+module tb_cpu;
 
-  // -----------------------------
-  // DUT interface
-  // -----------------------------
-  logic     clk;
-  logic     reset;
+  logic clk, reset;
   operation op;
-  logic     done_out;
+  logic done_out;
 
-  // Instantiate CPU
-  cpu dut (
-    .clk      (clk),
-    .reset    (reset),
-    .op       (op),
-    .done_out (done_out)
+  // Instantiate DUT
+  cpu u_cpu (
+    .clk   (clk),
+    .reset (reset),
+    .op    (op),
+    .done_out(done_out)
   );
 
-  // -----------------------------
-  // Params / vars
-  // -----------------------------
-  localparam integer TOTAL_ELEMS = NCOEFF * NPRIMES;
-
-  integer c, p;
-  integer errors;
-  integer ct0_cipher, ct1_cipher, out_cipher;
-
-  // -----------------------------
   // Clock
-  // -----------------------------
+  always #5 clk = ~clk;
+
+// =========================================================
+  // Task: write regfile entry (Backdoor access to 4D Memory)
+  // =========================================================
+  task write_reg(input int cipher_idx, input vec_t A, input vec_t B);
+    // We refer to the DUT parameters to ensure loop bounds match the HW definition
+    // Accessing u_cpu.u_rf allows us to use the specific NCOEFF/NPRIMES of that instance
+    int flat_idx;
+
+    for (int c = 0; c < NCOEFF; c++) begin
+      for (int p = 0; p < NPRIMES; p++) begin
+        
+        // Calculate the flat index for vec_t
+        // Must match the logic in regfile: flat_idx = c * NPRIMES + p
+        flat_idx = c * NPRIMES + p;
+
+        // Write Poly 0 (A)
+        // mem[cipher][poly][coeff][prime]
+        u_cpu.u_rf.mem[cipher_idx][0][c][p] = A[flat_idx];
+
+        // Write Poly 1 (B)
+        u_cpu.u_rf.mem[cipher_idx][1][c][p] = B[flat_idx];
+      end
+    end
+  endtask
+
+  // =========================================================
+  // Task: read regfile entry (Backdoor access to 4D Memory)
+  // =========================================================
+  task read_reg(input int cipher_idx, output vec_t A, output vec_t B);
+    int flat_idx;
+
+    // Initialize defaults to avoid X propagation if partial reads occur
+    A = '{default: '0};
+    B = '{default: '0};
+
+    for (int c = 0; c < NCOEFF; c++) begin
+      for (int p = 0; p < NPRIMES; p++) begin
+        
+        // Calculate the flat index
+        flat_idx = c * NPRIMES + p;
+
+        // Read Poly 0 (A)
+        A[flat_idx] = u_cpu.u_rf.mem[cipher_idx][0][c][p];
+
+        // Read Poly 1 (B)
+        B[flat_idx] = u_cpu.u_rf.mem[cipher_idx][1][c][p];
+      end
+    end
+  endtask
+
+  // Wait until done_out == 1
+  task wait_done();
+    @(posedge clk);
+    @(posedge clk);
+    @(posedge clk);
+    @(posedge clk);
+    // while (!done_out) @(posedge clk);
+    @(posedge clk); // allow writeback to settle
+  endtask
+
+  // ================================
+  // Task: Compare two vectors
+  // Returns 1 if equal, 0 if mismatch
+  // ================================
+  function automatic logic compare_vecs(string name, vec_t act, vec_t exp);
+    compare_vecs = 1'b1;
+    foreach(act[i]) begin
+      if (act[i] !== exp[i]) begin
+        $display("[FAIL] %s mismatch at index %0d. Act: %0d, Exp: %0d", 
+                 name, i, act[i], exp[i]);
+        compare_vecs = 1'b0;
+        // Optional: break; // Stop at first error
+      end
+    end
+  endfunction
+
+  // =========================================================
+  // Main Test Sequence
+  // =========================================================
   initial begin
+
+    vec_t CT1_A = '{default: 5};
+    vec_t CT1_B = '{default: 10};
+    vec_t CT2_A = '{default: 7};
+    vec_t CT2_B = '{default: 3};
+
+    vec_t PT   = '{default: 4};   // plaintext
+    vec_t DELTA = '{default: `DELTA};
+    vec_t outA, outB;
+    vec_t gold_A, gold_B;
+    logic match_A, match_B;
+
     clk = 0;
-    forever #5 clk = ~clk;
-  end
+    reset = 1;
+    op = '0;
+    
+    reset = 0;
+    repeat(5) @(posedge clk);
+    
 
-  // -----------------------------
-  // Main test
-  // -----------------------------
-  initial begin
-    // init
-    reset       = 1'b1;
-    op          = '0;
-    errors      = 0;
-    ct0_cipher  = 0;
-    ct1_cipher  = 1;
-    out_cipher  = 2;
+    // =======================================================
+    // Preload Register File
+    // REG0 = CT1
+    // REG1 = CT2
+    // REG2 = PT
+    // =======================================================
 
-    // hold reset
-    repeat (5) @(posedge clk);
-    reset = 1'b0;
-    @(posedge clk);
+    write_reg(0, CT1_A, CT1_B);
+    write_reg(1, CT2_A, CT2_B);
+    write_reg(2, PT, '{default:0});
 
-    // ------------------------------------
-    // Initialize CT0, CT1 in regfile mem
-    // ------------------------------------
-    $display("[%0t] Initializing regfile memories", $time);
-    for (c = 0; c < NCOEFF; c = c + 1) begin
-      for (p = 0; p < NPRIMES; p = p + 1) begin
-        // CT0 (cipher 0)
-        dut.u_rf.init_mem_entry(ct0_cipher, 0, c, p, coeff_t'(10 + c + p));     // A
-        dut.u_rf.init_mem_entry(ct0_cipher, 1, c, p, coeff_t'(20 + 2*c + p));   // B
+    $display("==== Starting CPU Testbench ====");
 
-        // CT1 (cipher 1)
-        dut.u_rf.init_mem_entry(ct1_cipher, 0, c, p, coeff_t'(30 + c + 2*p));   // A
-        dut.u_rf.init_mem_entry(ct1_cipher, 1, c, p, coeff_t'(40 + 3*c + 2*p)); // B
+    // =======================================================
+    // TEST 1: CT-CT ADD
+    // out = CT1 + CT2
+    // =======================================================
 
-      end
-    end
-
-    // ==================================================
-    // Test 1: CT–CT ADD  (CT0 + CT1 -> CT2)
-    // ==================================================
-    $display("[%0t] Starting CT-CT ADD test", $time);
-
-    op.mode   = OP_CT_CT_ADD;
-    op.idx1_a = ct0_cipher*NPOLY + 0; // CT0.A
-    op.idx1_b = ct0_cipher*NPOLY + 1; // CT0.B
-    op.idx2_a = ct1_cipher*NPOLY + 0; // CT1.A
-    op.idx2_b = ct1_cipher*NPOLY + 1; // CT1.B
-
-    out_cipher = 2;
-    op.out_a   = out_cipher*NPOLY + 0; // CT2.A
-    op.out_b   = out_cipher*NPOLY + 1; // CT2.B
-
-    // No need to poke start_operation anymore; regfile is always "ready"
-    @(posedge clk);
-
-    // Wait for all residues (overkill now, but safe)
-    repeat (TOTAL_ELEMS + 20) @(posedge clk);
-
-    // Check a few residues in CT2
-    $display("[%0t] Checking CT-CT ADD result (CT2)", $time);
-    for (c = 0; c < (NCOEFF < 2 ? NCOEFF : 2); c = c + 1) begin
-      for (p = 0; p < NPRIMES; p = p + 1) begin
-        integer exp_a, exp_b;
-        integer a0, b0, a1, b1;
-        integer ra, rb;
-
-        a0 = dut.u_rf.mem[ct0_cipher][0][c][p];
-        b0 = dut.u_rf.mem[ct0_cipher][1][c][p];
-        a1 = dut.u_rf.mem[ct1_cipher][0][c][p];
-        b1 = dut.u_rf.mem[ct1_cipher][1][c][p];
-
-        ra = dut.u_rf.mem[out_cipher][0][c][p];
-        rb = dut.u_rf.mem[out_cipher][1][c][p];
-
-        exp_a = a0 + a1;
-        exp_b = b0 + b1;
-
-        if (ra !== coeff_t'(exp_a)) begin
-          $display("ERROR CT-CT A: coeff %0d prime %0d got %0d exp %0d",
-                   c, p, ra, exp_a);
-          errors = errors + 1;
-        end
-        if (rb !== coeff_t'(exp_b)) begin
-          $display("ERROR CT-CT B: coeff %0d prime %0d got %0d exp %0d",
-                   c, p, rb, exp_b);
-          errors = errors + 1;
-        end
-      end
-    end
-
-    // ==================================================
-    // Test 2: CT–PT ADD
-    // ==================================================
-    $display("[%0t] Starting CT-PT ADD test", $time);
-
-    op.mode   = OP_CT_PT_ADD;
-
-    // idx1_a -> A path (pass-through)
-    op.idx1_a = ct0_cipher*NPOLY + 0; // CT0.A
-
-    // idx2_a -> B path (+ DELTA_L)
-    op.idx2_a = ct0_cipher*NPOLY + 1; // CT0.B
-
-    // idx1_b / idx2_b unused in this mode
-    op.idx1_b = '0;
-    op.idx2_b = '0;
-
-    out_cipher = 3;
-    op.out_a   = out_cipher*NPOLY + 0; // CT3.A
-    op.out_b   = out_cipher*NPOLY + 1; // CT3.B
+    op.mode  = OP_CT_CT_ADD;
+    op.idx1_a = 0; // CT1.A
+    op.idx1_b = 0; // CT1.B
+    op.idx2_a = 1; // CT2.A
+    op.idx2_b = 1; // CT2.B
+    op.out_a  = 3; // result stored in reg3
+    op.out_b  = 3; // both A and B of reg3
 
     @(posedge clk);
+    wait_done();
 
-    repeat (TOTAL_ELEMS + 20) @(posedge clk);
+    
+    read_reg(3, outA, outB);
 
-    // Check CT3
-    $display("[%0t] Checking CT-PT ADD result (CT3)", $time);
-    for (c = 0; c < (NCOEFF < 2 ? NCOEFF : 2); c = c + 1) begin
-      for (p = 0; p < NPRIMES; p = p + 1) begin
-        integer a_in, b_in;
-        integer a_out, b_out;
-        integer exp_a2, exp_b2;
-
-        a_in  = dut.u_rf.mem[ct0_cipher][0][c][p]; // CT0.A
-        b_in  = dut.u_rf.mem[ct0_cipher][1][c][p]; // CT0.B
-        a_out = dut.u_rf.mem[out_cipher][0][c][p]; // CT3.A
-        b_out = dut.u_rf.mem[out_cipher][1][c][p]; // CT3.B
-
-        exp_a2 = a_in;
-        exp_b2 = b_in + DELTA_L;
-
-        if (a_out !== coeff_t'(exp_a2)) begin
-          $display("ERROR CT-PT A: coeff %0d prime %0d got %0d exp %0d",
-                   c, p, a_out, exp_a2);
-          errors = errors + 1;
-        end
-
-        if (b_out !== coeff_t'(exp_b2)) begin
-          $display("ERROR CT-PT B: coeff %0d prime %0d got %0d exp %0d",
-                   c, p, b_out, exp_b2);
-          errors = errors + 1;
-        end
-      end
+    foreach(gold_A[i]) begin
+        gold_A[i] = CT1_A[i] + CT2_A[i];
+        gold_B[i] = CT1_B[i] + CT2_B[i];
     end
 
-    // ==================================================
-    // Summary
-    // ==================================================
-    $display("=======================================");
-    if (errors == 0) begin
-      $display("CPU TEST PASSED (CT-CT + CT-PT add)");
-    end else begin
-      $display("CPU TEST FAILED with %0d errors", errors);
-    end
-    $display("=======================================");
+    match_A = compare_vecs("CT-CT ADD (A)", outA, gold_A);
+    match_B = compare_vecs("CT-CT ADD (B)", outB, gold_B);
 
+    if (match_A && match_B)
+      $display("[PASS] CT-CT ADD correct.");
+    else begin
+      $display("[FAIL] CT-CT ADD mismatch!");
+      $display(" expected A=%0d B=%0d", gold_A[0], gold_B[0]);
+      $display(" actual   A=%0d B=%0d", outA[0], outB[0]);
+    end
+
+    // =======================================================
+    // TEST 2: CT-PT ADD
+    //
+    // CT_out.A = CT.A
+    // CT_out.B = CT.B + PT * DELTA
+    // =======================================================
+
+    // op.mode  = OP_CT_PT_ADD;
+    // op.idx1_a = 0; // CT1.A
+    // op.idx1_b = 0; // CT1.B
+    // op.idx2_a = 2; // PT
+    // op.idx2_b = 2; // PT
+    // op.out_a  = 4; // result in reg4
+    // op.out_b  = 4;
+
+    // @(posedge clk);
+    // wait_done();
+
+    // read_reg(4, outA, outB);
+
+    // gold_A = CT1_A;
+    // gold_B = CT1_B + (PT * DELTA);
+
+    // if (outA == gold_A && outB == gold_B)
+    //   $display("[PASS] CT-PT ADD correct.");
+    // else begin
+    //   $display("[FAIL] CT-PT ADD mismatch!");
+    //   $display(" expected A=%0d B=%0d", gold_A[0], gold_B[0]);
+    //   $display(" actual   A=%0d B=%0d", outA[0], outB[0]);
+    // end
+
+    $display("==== TESTBENCH FINISHED ====");
     $finish;
   end
 

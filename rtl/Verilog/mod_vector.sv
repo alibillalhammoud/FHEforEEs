@@ -1,9 +1,9 @@
 `include "types.svh"
 
 module mod_vector #(
-  parameter int unsigned N   = N_SLOTS_L,
-  parameter int unsigned W   = W_BITS_L,
-  parameter int unsigned WW  = 2*W_BITS_L        
+  parameter int unsigned N   = `N_SLOTS,
+  parameter int unsigned W   = `RNS_PRIME_BITS,
+  parameter int unsigned WW  = 2*`RNS_PRIME_BITS        
 )(
   input  wide_vec_t in_vec,
   output vec_t      out_vec
@@ -22,7 +22,7 @@ module mod_vector #(
     end
   endfunction
 
-  function automatic word_t srem_mod_q(input logic signed [WW-1:0] x_in);
+  function automatic rns_residue_t srem_mod_q(input logic signed [WW-1:0] x_in);
     logic signed [WWP-1:0] xse;
     logic        [WWP-1:0] abs_u;
     logic        [W-1:0]   a_mod;
@@ -33,7 +33,7 @@ module mod_vector #(
       if (!xse[WWP-1]) begin
         srem_mod_q = a_mod;                             
       end else begin
-        srem_mod_q = (a_mod == '0) ? word_t'(0) : word_t'(Q - a_mod); 
+        srem_mod_q = (a_mod == '0) ? rns_residue_t'(0) : rns_residue_t'(Q - a_mod); 
       end
     end
   endfunction

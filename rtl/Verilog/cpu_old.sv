@@ -4,7 +4,6 @@ module cpu (
   input  logic clk,
   input  logic reset,
   input  operation op,
-  input logic start,
   output logic done_out
 );
 
@@ -51,6 +50,17 @@ module cpu (
   logic wb_valid;
   logic [3:0] stage;   // your CT-PT-MUL micro-FSM state
   logic       inverse; // NTT direction flag
+
+  // -----------------------------
+  // Scalarized constants for CT-PT ops
+  // -----------------------------
+  coeff_t delta_gamma;
+  coeff_t twist_factor_coeff;
+  coeff_t untwist_factor_coeff;
+
+  assign delta_gamma          = DELTA_L;          // from types.svh
+  assign twist_factor_coeff   = twist_factor[0];  // vec_t -> single coeff
+  assign untwist_factor_coeff = untwist_factor[0];
 
   // Parse Instruction
   always_comb begin
@@ -192,6 +202,9 @@ module cpu (
 
     if (stage1_valid) begin 
       unique case (stage1_op_mode)
+
+      
+
         OP_CT_CT_ADD: begin
           // CT-CT ADD:
           // CT2.A = CT0.A + CT1.A
@@ -214,25 +227,17 @@ module cpu (
           done     = 1;
         end
 
+
         OP_CT_PT_ADD: begin
-          case (stage)
-          4'b0: begin
-            op_a     = stage1_src0;                    // CT1.A
-            op_b     = '{default: '0};                 // 0
-            op_c     = stage1_src2;                    // PT
-            op_d     = '{default: `DELTA};
-            fu_out_1 = add_out_1;
-            fu_out_2 = mul_out_2;
-            wb_0     = 1;
-          end
-          4'b1: begin
-            op_a     = dest1_coefficient;             // Delta * Gamma
-            op_b     = stage1_src1;                  // CT1.B
-            fu_out_1 = add_out_1;                    // CT1.B + Delta_Gamma
-            wb_1     = 1;
-            done     = 1;
-          end
-          endcase
+          op_a     = stage1_src0;                    // CT1.A
+          op_b     = '{default: '0};                 // 0
+          op_c     = stage1_src2;                    // CT1.B
+          op_d     = '{default: delta_gamma};        // broadcast DELTA*gamma
+          fu_out_1 = add_out_1;
+          fu_out_2 = add_out_2;
+          wb_0     = 1;
+          wb_1     = 1;
+          done     = 1;
         end
 
         OP_CT_PT_MUL: begin
@@ -241,36 +246,36 @@ module cpu (
           // TWIST
           4'b0001: begin
             op_a     = stage1_src0;                       // CT1.A (vec)
-            op_b     = twist_factor;
+            op_b     = '{default: twist_factor_coeff};    // scalar twist broadcast
             op_c     = stage1_src2;                       // PT (vec)
-            op_d     = twist_factor;
+            op_d     = '{default: twist_factor_coeff};    // scalar twist broadcast
             fu_out_1 = mul_out_1;
             fu_out_2 = mul_out_2;
           end
           // NTT
           4'b0010: begin
             inverse  = 1'b0;
-            op_a     = dest0_coefficient;
-            op_c     = dest1_coefficient;
+            op_a     = mod_out_1;
+            op_c     = mod_out_2;
             fu_out_1 = ntt_out_1;
             fu_out_2 = ntt_out_2;
           end
           // MUL
           4'b0011: begin
-            op_a     = dest0_coefficient;
-            op_b     = dest1_coefficient;
+            op_a     = mod_out_1;
+            op_b     = mod_out_2;
             fu_out_1 = mul_out_1;
           end
           // Inverse NTT
           4'b0100: begin
             inverse  = 1'b1;
-            op_a     = dest0_coefficient;
+            op_a     = mod_out_1;
             fu_out_1 = ntt_out_1;
           end
           // Untwist
           4'b0101: begin
-            op_a     = dest0_coefficient;
-            op_b     = untwist_factor;
+            op_a     = mod_out_1;
+            op_b     = '{default: untwist_factor_coeff};  // scalar untwist broadcast
             fu_out_1 = mul_out_1;
             wb_0     = 1;
           end
@@ -278,36 +283,36 @@ module cpu (
           // CT1.B * Plaintext
           4'b0110: begin
             op_a     = stage1_src1;                       // CT1.B
-            op_b     = twist_factor;
+            op_b     = '{default: twist_factor_coeff};
             op_c     = stage1_src2;                       // PT
-            op_d     = twist_factor;
+            op_d     = '{default: twist_factor_coeff};
             fu_out_1 = mul_out_1;
             fu_out_2 = mul_out_2;
           end
           // NTT
           4'b0111: begin
             inverse  = 1'b0;
-            op_a     = dest0_coefficient;
-            op_c     = dest1_coefficient;
+            op_a     = mod_out_1;
+            op_c     = mod_out_2;
             fu_out_1 = ntt_out_1;
             fu_out_2 = ntt_out_2;
           end
           // MUL
           4'b1000: begin
-            op_a     = dest0_coefficient;
-            op_b     = dest1_coefficient;
+            op_a     = mod_out_1;
+            op_b     = mod_out_2;
             fu_out_1 = mul_out_1;
           end
           // Inverse NTT
           4'b1001: begin
             inverse  = 1'b1;
-            op_a     = dest0_coefficient;
+            op_a     = mod_out_1;
             fu_out_1 = ntt_out_1;
           end
           // Untwist
           4'b1010: begin
-            op_a     = dest0_coefficient;
-            op_b     = untwist_factor;
+            op_a     = mod_out_1;
+            op_b     = '{default: untwist_factor_coeff};
             fu_out_1 = mul_out_1;
             wb_1     = 1;
             done     = 1;
@@ -363,8 +368,6 @@ module cpu (
       dest0_coefficient     <= '{default: '0};
       dest1_coefficient     <= '{default: '0};
       wb_valid              <= 1'b0;
-      stage <= 4'b0;
-      done_out <= '0;
     end else begin
       dest0_valid           <= stage2_valid & wb_0;
       dest0_coefficient     <= mod_out_1;
@@ -373,11 +376,8 @@ module cpu (
       dest1_coefficient     <= mod_out_2;
 
       wb_valid              <= stage2_valid;
-
-      stage <= (stage2_valid & done) ? 4'b0 : stage + 4'b1; 
-
-      done_out <= done & stage2_valid;
     end
   end
+  assign done_out = done & wb_valid;
 
 endmodule

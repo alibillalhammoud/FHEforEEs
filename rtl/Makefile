@@ -12,7 +12,6 @@ DUT_CPU = verilog/cpu.sv \
           verilog/regfile.sv \
           verilog/adder.sv \
           verilog/mult.sv \
-          verilog/mod_single.sv \
           verilog/mod_vector.sv
 TB_CPU  = test/cpu_test.sv
 SIM_CPU = $(SIMDIR)/simv_cpu
