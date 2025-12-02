@@ -64,14 +64,6 @@ def nparr_int_round(dividend: np.ndarray, divisor: int) -> np.ndarray:
     half = divisor >> 1
     return (dividend+half) // divisor
 
-def _INTERNAL_get_next_prime(x, plistiter):
-    try:
-        next_x = next(plistiter)
-        assert next_x > x
-    except Exception:
-        raise RuntimeError("No more primes available or other error with get_next_prime") from None
-    return next_x
-
 def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable = None, scheme_SIMD_slots: int = None) -> np.ndarray:
     """Generates a valid ResidueNumberSystem basis (a set of co-prime integers)
     RNS can be used for modulo arithmetic on very large integers. This algorithm is deterministic
@@ -271,10 +263,10 @@ class RNSInteger:
         # precompute
         q = self.modulus
         y  = [q // qi for qi in self.basis] # yi = q/qi
+        z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)] # zi = yi^{-1} mod qi
         y_mod_b = list()
         for j, bj in enumerate(target_basis):
             y_mod_b.append([yi % bj for yi in y])
-        z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)] # zi = yi^{-1} mod qi
         # Hardware step
         a  = [(xi * zi) % qi for xi, zi, qi in zip(self.residues, z, self.basis)]  # ai
         c_res = []
