@@ -2,81 +2,85 @@
 
 // multi-cycle fast base conversion for a single RNS Integer
 module fastBConvSingle #(
-    localparam int IN_BASIS_LEN, // num primes in input basis
-    localparam int OUT_BASIS_LEN, // num primes in target basis
+    parameter int IN_BASIS_LEN, // num primes in input basis
+    parameter int OUT_BASIS_LEN, // num primes in target basis
     // PER-BASIS CONSTANTS (all pre-computed)
     // qi  : input  basis moduli
     // bj  : target basis moduli
     // zi  : yi-1  = (q/qi) ^-1  mod qi
     // yib : (q/qi)            % bj
-    localparam rns_residue_t IN_BASIS [IN_BASIS_LEN],
-    localparam rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
-    localparam rns_residue_t ZiLUT [IN_BASIS_LEN],
-    localparam rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
+    parameter rns_residue_t IN_BASIS [IN_BASIS_LEN],
+    parameter rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
+    parameter rns_residue_t ZiLUT [IN_BASIS_LEN],
+    parameter rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
 ) (
-    input logic clk,
+    input wire clk,
+    input wire reset,
 
-    input logic in_valid, // acts like a reset signal and triggers the calculations to start
-    input rns_residue_t input_RNSint [IN_BASIS_LEN],
+    input wire in_valid, // acts like a reset signal and triggers the calculations to start
+    input wire rns_residue_t input_RNSint [IN_BASIS_LEN],
 
-    output logic out_valid,
+    output wire out_valid,
     output rns_residue_t output_RNSint [OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
 );
-    // control state
-    logic [$clog2(IN_BASIS_LEN)-1:0] current_state;
-    logic compute_is_active;
+    // control state registers
+    reg [$clog2(IN_BASIS_LEN)-1:0] current_state;
+    reg compute_is_active;
 
     // compute "a" for every residue in the input
-    rns_residue_t n_a_res [IN_BASIS_LEN];
+    wire wide_rns_residue_t a_re_nomod [IN_BASIS_LEN];
+    wire rns_residue_t n_a_res [IN_BASIS_LEN];
     rns_residue_t a_res [IN_BASIS_LEN]; // register
-    always_comb begin : CALC_A
+
+    genvar i;
+    generate
         // all steps are indpendent/parallel
-        for (int i = 0; i < `IN_BASIS_LEN; i++) begin
-            n_a_res[i] = (input_RNSint[i]*ZiLUT[i]) % IN_BASIS[i];
+        for (i = 0; i < IN_BASIS_LEN; ++i) begin : GEN_A_COEFFS
+            assign a_re_nomod[i] = input_RNSint[i] * ZiLUT[i];
+            assign n_a_res[i] = a_re_nomod[i] % IN_BASIS[i];
         end
-    end
+    endgenerate
     
     // accumulate the new RNS prime from partial sums calculated over multiple (IN_BASIS_LEN) cycles
-    rns_residue_t psum [`OUT_BASIS_LEN];
-    rns_residue_t n_total_sum [`OUT_BASIS_LEN];
-    logic [`RNS_PRIME_BITS:0] wide_n_total_sum [`OUT_BASIS_LEN];
-    always_comb begin : ACCUMULATE_PSUM
+    wire rns_residue_t psum [OUT_BASIS_LEN];
+    wire wide_rns_residue_t psum_nomod [OUT_BASIS_LEN];
+    wire rns_residue_t n_total_sum [OUT_BASIS_LEN];
+    wire [`RNS_PRIME_BITS:0] wide_n_total_sum [OUT_BASIS_LEN];
+    genvar j;
+    generate
         // all steps are indpendent/parallel
-        for (int j = 0; j < `OUT_BASIS_LEN; j++) begin
+        for (j = 0; j < OUT_BASIS_LEN; j++) begin : PSUM_GEN
             // multiplication needs a real mod
-            psum[j] = (a_res[current_state]*YMODB[j][current_state]) % OUT_BASIS[j];
-            wide_n_total_sum[j] = output_RNSint[j] + psum[j];
+            assign psum_nomod[j] = a_res[current_state] * YMODB[j][current_state];
+            assign psum[j] = psum_nomod[j] % OUT_BASIS[j];
+            assign wide_n_total_sum[j] = output_RNSint[j] + psum[j];
             // addition can use a "fake" mod
-            n_total_sum[j] = wide_n_total_sum[j] > OUT_BASIS[j] ? wide_n_total_sum[j]-OUT_BASIS[j] : wide_n_total_sum[j];
+            assign n_total_sum[j] = (wide_n_total_sum[j] >= OUT_BASIS[j]) ? (wide_n_total_sum[j] - OUT_BASIS[j]) : wide_n_total_sum[j];
         end
-    end
-    
+    endgenerate
+
+    assign out_valid = (current_state==IN_BASIS_LEN);
     // sequential logic / state machine controller
     always_ff @( posedge clk ) begin : MULTICYCLE_REGS
         // if in_valid, start the state counter and latch the computed "a" coefficients
-        current_state <= in_valid ? '0 : (compute_is_active ? (current_state + 1) : current_state);
-        compute_is_active <= in_valid ? 1 : (out_valid ? 0 : compute_is_active);
-        out_valid <= current_state==IN_BASIS_LEN;
+        current_state <= (reset || in_valid) ? '0 : (compute_is_active ? (current_state + 1) : current_state);
+        compute_is_active <= reset ? 0 : (in_valid ? 1 : (out_valid ? 0 : compute_is_active));
         //
         // first pipeline stage computes "a" coefs
         a_res <= in_valid ? n_a_res : a_res;
         // second stage writes to the output register, and takes "OUT_BASIS_LEN" cycles
-        output_RNSint <= in_valid ? '0 : (compute_is_active ? n_total_sum : output_RNSint);
+        output_RNSint <= in_valid ? '{default:'0} : (compute_is_active ? n_total_sum : output_RNSint);
     end
 endmodule
 
+/*
 module fastBConv #(
-    localparam unsigned IN_BASIS_LEN, // num primes in input basis
-    localparam unsigned OUT_BASIS_LEN, // num primes in target basis
-    // PER-BASIS CONSTANTS (all pre-computed)
-    // qi  : input  basis moduli
-    // bj  : target basis moduli
-    // zi  : yi-1  = (q/qi) ^-1  mod qi
-    // yib : (q/qi)            % bj
-    localparam rns_residue_t IN_BASIS [IN_BASIS_LEN],
-    localparam rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
-    localparam rns_residue_t ZiLUT [IN_BASIS_LEN],
-    localparam rns_residue_t YMODB[OUT_BASIS_LEN][IN_BASIS_LEN]
+    parameter int IN_BASIS_LEN, // num primes in input basis
+    parameter int OUT_BASIS_LEN, // num primes in target basis
+    parameter rns_residue_t IN_BASIS [IN_BASIS_LEN],
+    parameter rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
+    parameter rns_residue_t ZiLUT [IN_BASIS_LEN],
+    parameter rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
 ) (
     input logic clk,
     input logic reset,
@@ -98,3 +102,4 @@ module fastBConv #(
 
 
 endmodule
+*/

@@ -129,14 +129,14 @@ class BFVSchemeConfiguration:
         y_q  = [modulus // qi for qi in listin]
         z_in_to_out = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y_q, listin)]
         if zname is not None:
-            print(f"parameter logic [`RNS_PRIME_BITS-1:0] {zname} {{{BFVSchemeConfiguration._vfrnspa(z_in_to_out)}}}")
+            print(f"parameter rns_residue_t {zname} = \'{{{BFVSchemeConfiguration._vfrnspa(z_in_to_out)}}};")
         y_mod_b = list()
         for j, bj in enumerate(target_basis):
             y_mod_b.append([yi % bj for yi in y_q])
-        ymodbstr = f"parameter logic [`RNS_PRIME_BITS-1:0] {yname} = " + "{\n"
+        ymodbstr = f"parameter rns_residue_t {yname} = " + "\'{\n"
         for y_mod_bj in y_mod_b:
-            ymodbstr += "{ " + BFVSchemeConfiguration._vfrnspa(y_mod_bj) + " },\n"
-        ymodbstr = ymodbstr.strip().removesuffix(",") + "\n}"
+            ymodbstr += "\'{ " + BFVSchemeConfiguration._vfrnspa(y_mod_bj) + " },\n"
+        ymodbstr = ymodbstr.strip().removesuffix(",") + "\n};"
         print(ymodbstr)
     
     def print_verilog_format(self):
@@ -144,15 +144,18 @@ class BFVSchemeConfiguration:
         print("`define RNS_PRIME_BITS =", self.residue_bits)
         print("`define t_MODULUS =",self.t)
         # print RNS bases
-        print(f"parameter logic [`RNS_PRIME_BITS-1:0] q_BASIS {{{self._vfrnspa(self.RNS_basis_q)}}}")
         print(f"`define q_BASIS_LEN {len(self.RNS_basis_q)}")
         print("//`define q_MODULUS =",self.q)
-        print(f"parameter logic [`RNS_PRIME_BITS-1:0] B_BASIS {{{self._vfrnspa(self.RNS_basis_B)}}}")
+        print(f"parameter rns_residue_t q_BASIS [`q_BASIS_LEN] = \'{{{self._vfrnspa(self.RNS_basis_q)}}};")
         print(f"`define B_BASIS_LEN {len(self.RNS_basis_B)}")
         print("//`define B_MODULUS =",np.prod(self.RNS_basis_B))
-        print(f"parameter logic [`RNS_PRIME_BITS-1:0] Ba_BASIS {{{self._vfrnspa(self.RNS_basis_Ba)}}}")
+        print(f"parameter rns_residue_t B_BASIS [`B_BASIS_LEN] = \'{{{self._vfrnspa(self.RNS_basis_B)}}};")
         print(f"`define Ba_BASIS_LEN {len(self.RNS_basis_Ba)}")
         print("//`define Ba_MODULUS =",np.prod(self.RNS_basis_Ba))
+        print(f"parameter rns_residue_t Ba_BASIS [`Ba_BASIS_LEN] = \'{{{self._vfrnspa(self.RNS_basis_Ba)}}};")
+        print(f"`define qBBa_BASIS_LEN {len(self.RNS_basis_qBBa)}")
+        print("//`define qBBa_MODULUS =",np.prod(self.RNS_basis_qBBa))
+        print(f"parameter rns_residue_t qBBa_BASIS [`qBBa_BASIS_LEN] = \'{{{self._vfrnspa(self.RNS_basis_qBBa)}}};")
         print()
         # print base conversion inverses (precomputed values)
         # q to qBBa

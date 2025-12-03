@@ -217,7 +217,7 @@ verdi*
 novas*
 *fsdb*
 
-ucli.key
+*.key
 
 # Marimo
 marimo/_static/
