@@ -74,7 +74,7 @@ def main():
     )
     parser.add_argument('--t', type=int, default=257,
                         help='Plaintext modulus (prime number), default: 257')
-    parser.add_argument('--n', type=int, default=128,
+    parser.add_argument('--n', type=int, default=64,
                         help='Polynomial degree (power of 2), default: 128')
     parser.add_argument('--qbits', type=int, default=300,
                         help='Bit-length of ciphertext modulus q, default: 290')

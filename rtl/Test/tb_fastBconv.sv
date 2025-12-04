@@ -105,8 +105,8 @@ int unsigned pass_cnt = 0;
 int unsigned fail_cnt = 0;
 
 // hardcoded example expected output residues
-rns_residue_t residues_before [11] = '{171, 248439331, 286163143, 1967172438, 241628409, 1837085570 ,1718631786 ,1862869392 ,458203860 ,765047659 ,1517904771};
-rns_residue_t residues_after [31] = '{171, 248439331, 286163143, 1967172438, 241628409, 1837085570 ,1718631786 ,1862869392 ,458203860 ,765047659 ,1517904771, 499684161, 1971384895 ,1200237882, 396650664 ,1311262823, 231663970, 1167503752, 165387813, 847607089, 1312825462, 1945043885, 1969036839, 1379338755, 1021240996, 442208247, 431043462, 668688103, 808474874, 656330695, 1833556700};
+rns_residue_t residues_before [11] = '{82, 1007849158, 344623035, 974553355, 252232956, 1591552870, 1997619035, 168382023, 978517921, 225318580, 108420664};
+rns_residue_t residues_after [22] = '{82, 1007849158, 344623035, 974553355, 252232956, 1591552870, 1997619035,168382023, 978517921, 225318580, 108420664, 1745084395, 1298058092, 384915245,939226905, 1044755627, 615308513, 990285824, 129194194, 1004046848, 716614417, 664011573};
 rns_residue_t verilog_gold [OUT_BASIS_LEN];
 
 int unsigned poly_pass_cnt = 0;
@@ -141,7 +141,7 @@ initial begin
         // convert to residues w.r.t each qi
         for (int i = 0; i < IN_BASIS_LEN; i++) begin
             if(COMPARE_PYTHON && t==0) begin
-                assert (OUT_BASIS_LEN == 31) else $error("Error: cannot run debug mode unless input basis is q and output is qBBa");
+                assert (OUT_BASIS_LEN == 22) else $error("Error: cannot run compare python mode unless input basis is q and output is qBBa");
                 input_RNSint[i] = residues_before[i];
             end else begin
                 input_RNSint[i] = x_rand % IN_BASIS[i];
