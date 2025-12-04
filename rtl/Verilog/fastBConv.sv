@@ -17,7 +17,7 @@ module fastBConvSingle #(
     input wire clk,
     input wire reset,
 
-    input wire in_valid, // acts like a reset signal and triggers the calculations to start
+    input wire in_valid, // triggers the calculations to start
     input wire rns_residue_t input_RNSint [IN_BASIS_LEN],
 
     output wire out_valid,
@@ -73,33 +73,51 @@ module fastBConvSingle #(
     end
 endmodule
 
-/*
+
+
+// TODO in the future, we should move the control logic here because we don't need control for each single block
+// for now, fastBConvSingle is tested and working
 module fastBConv #(
-    parameter int IN_BASIS_LEN, // num primes in input basis
-    parameter int OUT_BASIS_LEN, // num primes in target basis
+    parameter int IN_BASIS_LEN,
+    parameter int OUT_BASIS_LEN,
     parameter rns_residue_t IN_BASIS [IN_BASIS_LEN],
     parameter rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
     parameter rns_residue_t ZiLUT [IN_BASIS_LEN],
     parameter rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
 ) (
-    input logic clk,
-    input logic reset,
+    input wire clk,
+    input wire reset,
 
-    input logic in_valid,
-    input rns_residue_t input_poly [`N_SLOTS][IN_BASIS_LEN],
+    input wire in_valid,
+    input wire rns_residue_t input_RNSpoly [`N_SLOTS][IN_BASIS_LEN],
 
-    output logic out_valid,
-    output rns_residue_t output_poly [`N_SLOTS][OUT_BASIS_LEN]
+    output wire out_valid,
+    output rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
 );
 
-    genvar i;
+    wire [`N_SLOTS-1:0] slot_out_valid;
+    
+    genvar k;
     generate
-    for (i = 0; i < `N_SLOTS; i++) begin
-        // follow the same procedure for every coefficient in the polynomial
-        // TODO instantiate fastBConvSingle
-    end
+        for (k = 0; k < `N_SLOTS; k++) begin : FASTBCONV_INSTS
+            fastBConvSingle #(
+                .IN_BASIS_LEN(IN_BASIS_LEN),
+                .OUT_BASIS_LEN(OUT_BASIS_LEN),
+                .IN_BASIS(IN_BASIS),
+                .OUT_BASIS(OUT_BASIS),
+                .ZiLUT(ZiLUT),
+                .YMODB(YMODB)
+            ) conv_inst (
+                .clk(clk),
+                .reset(reset),
+                .in_valid(in_valid), // could be indexed if you're triggering each slot separately
+                .input_RNSint(input_RNSpoly[k]), // [IN_BASIS_LEN] slice for this slot
+                .out_valid(slot_out_valid[k]),
+                .output_RNSint(output_RNSpoly[k])
+            );
+        end
     endgenerate
 
-
+    assign out_valid = slot_out_valid[0]; // logic is identical for all (it is redundant)
 endmodule
-*/
+

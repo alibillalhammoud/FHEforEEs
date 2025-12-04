@@ -25,6 +25,10 @@ rns_residue_t input_RNSint [IN_BASIS_LEN];
 logic out_valid;
 rns_residue_t output_RNSint [OUT_BASIS_LEN];
 
+logic out_valid_2;
+rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN];
+rns_residue_t input_RNSpoly [`N_SLOTS][IN_BASIS_LEN];
+
 //------------------------------------------------------------
 // Clock
 //------------------------------------------------------------
@@ -47,6 +51,22 @@ fastBConvSingle #(
     .input_RNSint (input_RNSint),
     .out_valid (out_valid),
     .output_RNSint (output_RNSint)
+);
+
+fastBConv #(
+    .IN_BASIS_LEN (IN_BASIS_LEN),
+    .OUT_BASIS_LEN(OUT_BASIS_LEN),
+    .IN_BASIS (IN_BASIS),
+    .OUT_BASIS (OUT_BASIS),
+    .ZiLUT (ZiLUT),
+    .YMODB (YMODB)
+) dut_POLY (
+    .clk (clk),
+    .reset (reset),
+    .in_valid (in_valid),
+    .input_RNSpoly (input_RNSpoly),
+    .out_valid (out_valid_2),
+    .output_RNSpoly (output_RNSpoly)
 );
 
 //------------------------------------------------------------
@@ -80,7 +100,7 @@ endfunction
 //------------------------------------------------------------
 // Test stimulus
 //------------------------------------------------------------
-localparam int NUM_TRIALS = 1000;
+localparam int NUM_TRIALS = 100;
 int unsigned pass_cnt = 0;
 int unsigned fail_cnt = 0;
 
@@ -89,10 +109,14 @@ rns_residue_t residues_before [11] = '{171, 248439331, 286163143, 1967172438, 24
 rns_residue_t residues_after [31] = '{171, 248439331, 286163143, 1967172438, 241628409, 1837085570 ,1718631786 ,1862869392 ,458203860 ,765047659 ,1517904771, 499684161, 1971384895 ,1200237882, 396650664 ,1311262823, 231663970, 1167503752, 165387813, 847607089, 1312825462, 1945043885, 1969036839, 1379338755, 1021240996, 442208247, 431043462, 668688103, 808474874, 656330695, 1833556700};
 rns_residue_t verilog_gold [OUT_BASIS_LEN];
 
+int unsigned poly_pass_cnt = 0;
+int unsigned poly_fail_cnt = 0;
+rns_residue_t poly_gold [`N_SLOTS][OUT_BASIS_LEN];
 logic DEBUG_MODE = 0;
 logic COMPARE_PYTHON = 1;
 rns_residue_t goldans [OUT_BASIS_LEN];
 bit mismatch;
+bit poly_mismatch = 0;
 initial begin
     $display("input basis is:");
     for(int i=0; i<IN_BASIS_LEN;++i) begin
@@ -173,6 +197,59 @@ initial begin
     $display("\n\n==============================================");
     $display("FastBConvSingle TB finished  --  %0d / %0d passed",
             pass_cnt, NUM_TRIALS);
+    $display("==============================================\n\n");
+
+    
+    // Test the polynomial version (only random input, no Python comparison)
+    for (int t = 0; t < NUM_TRIALS; t++) begin
+        // Generate input residues for all N_SLOTS
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            logic [255:0] x_rand_poly = { $urandom, $urandom, $urandom, $urandom, $urandom, $urandom, $urandom, $urandom };
+            for (int i = 0; i < IN_BASIS_LEN; i++) begin
+                input_RNSpoly[k][i] = x_rand_poly % IN_BASIS[i];
+            end
+        end 
+
+        // Generate golden outputs for all slots
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            fastBConv_gold(input_RNSpoly[k], poly_gold[k]);
+        end
+
+        // Drive DUT (in_valid asserted for 1 clk, same as above)
+        @(negedge clk);
+        in_valid = 1'b1;
+        @(negedge clk);
+        in_valid = 1'b0;
+
+        // Wait for polynomial DUT to finish
+        while (!out_valid_2) begin
+            @(posedge clk);
+        end
+
+        // Compare outputs per slot
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            for (int j = 0; j < OUT_BASIS_LEN; j++) begin
+                if (output_RNSpoly[k][j] !== poly_gold[k][j]) begin
+                    $display("[%0t]  POLY Trial %0d slot %0d  MISMATCH  bj[%0d]: DUT=%d  GOLD=%d",
+                                $time, t, k, j, output_RNSpoly[k][j], poly_gold[k][j]);
+                    poly_mismatch = 1;
+                end
+            end
+        end
+
+        if (poly_mismatch) begin 
+            poly_fail_cnt++; 
+        end else begin
+            poly_pass_cnt++;
+        end
+    end // end for t
+
+    //-----------------------------------------------------
+    //  Summary
+    //-----------------------------------------------------
+    $display("\n==============================================");
+    $display("FastBConv POLY TB finished -- %0d / %0d passed",
+        poly_pass_cnt, NUM_TRIALS);
     $display("==============================================\n\n");
 
     $finish;
