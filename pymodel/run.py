@@ -61,7 +61,7 @@ def run_test(op, client, server, v1, v2, pt, t, rlev):
     print("Test PASSED!" if success else "Test FAILED!")
     print()
 
-def generate_test_vectors(n, low=0, high=10):
+def generate_test_vectors(n, low=0, high=100):
     """Generate random test vectors of given length n."""
     v1 = np.random.randint(low, high, size=n)
     v2 = np.random.randint(low, high, size=n)
@@ -102,7 +102,7 @@ def main():
     config.print_verilog_format()
     # Generate test arrays of length n if vectors not supplied
     if args.vector1 is None or args.vector2 is None or args.plaintext is None:
-        v1, v2, pt = generate_test_vectors(args.n)
+        v1, v2, pt = generate_test_vectors(args.n,low=0,high=args.t)
     else:
         # Make sure input vectors have the correct length, resize or pad if necessary
         def fix_len(v):
