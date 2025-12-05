@@ -94,6 +94,7 @@ typedef enum logic [0:0] {
 } poly_sel_e;
 
 typedef enum logic [1:0] {
+    NO_OP,
     OP_CT_CT_ADD,
     OP_CT_PT_ADD,
     OP_CT_PT_MUL

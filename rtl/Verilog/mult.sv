@@ -8,11 +8,11 @@ module mult(
   // input b
   input q_BASIS_poly b_q,
   input B_BASIS_poly b_b,
-  input q_BASIS_poly b_ba,
+  input Ba_BASIS_poly b_ba,
   // output = a*b % q / a*b % Ba / a*b % Ba
   output q_BASIS_poly out_q,
   output B_BASIS_poly out_b,
-  output q_BASIS_poly out_ba
+  output Ba_BASIS_poly out_ba
 );
 
 // temp wires

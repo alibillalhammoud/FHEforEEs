@@ -55,10 +55,6 @@ module cpu (
   // Parse Instruction
   always_comb begin
     operation_mode            = op.mode;
-    source0_valid_q           = 1;
-    source1_valid_q           = 1;
-    source2_valid_q           = 1;
-    source3_valid_q           = 1;
     source0_register_index_q  = op.idx1_a;
     source1_register_index_q  = op.idx1_b;
     source2_register_index_q  = op.idx2_a;
@@ -109,12 +105,14 @@ module cpu (
   // ============================
   always_ff @(posedge clk) begin
     if (reset) begin
+      dest0_valid_q     <= 1'b0;
+      dest1_valid_q     <= 1'b0;
       stage1_valid      <= 1'b0;
       stage1_src0_q     <= '{default: '0};
       stage1_src1_q     <= '{default: '0};
       stage1_src2_q     <= '{default: '0};
       stage1_src3_q     <= '{default: '0};
-      stage1_op_mode    <= OP_CT_CT_ADD;
+      stage1_op_mode    <= NO_OP;
       stage1_dest0_idx  <= '0;
       stage1_dest1_idx  <= '0;
       dest0_poly_q      <= '{default: '0};
@@ -219,10 +217,10 @@ module cpu (
 
         OP_CT_PT_ADD: begin
           op_a_q       = stage1_src0_q;  // CT1.A           
-          op_b_q       = '{default: '0};  // 
-          op_c_q       = stage1_src0_q; // CT1.B     
-          op_d_q       = stage1_src2_q; // Scaled PT            
-          fu_out_1_q = add_out_1;
+          op_b_q       = '{default: '0};  // 0
+          op_c_q       = stage1_src1_q; // CT1.B     
+          op_d_q       = stage1_src3_q; // Scaled PT            
+          fu_out_1_q = op_a_q;
           fu_out_2_q = add_out_2;    
           wb_0_q     = 1;                
           wb_1_q     = 1;
