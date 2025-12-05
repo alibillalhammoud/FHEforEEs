@@ -1,134 +1,123 @@
-// fastBConv : RNS basis-conversion datapath
-//
-//  Implements the “Hardware step” in the Python fastBconv()
-//      ai  = (xi * zi)                  mod qi
-//      cj  = Σi (ai * yib[j][i])        mod bj
-//
-//  All expensive constants (zi, bj, yib) are pre-computed in software
-//  and supplied to the RTL through parameters.
-//
-//  Notes
-//  - Combinational version below; add pipeline regs if timing closes
-//  - Width W must be large enough to hold any modulus in either basis
-//  - Mod-multiplication is done with a simple (A*B) % M function here;
-//    swap in Barrett/Montgomery blocks if you have them.
-//---------------------------------------------------------------------
-module fastBConv #(
-    //-----------------------------------------------------------------
-    // GLOBAL SIZES
-    //-----------------------------------------------------------------
-    parameter int unsigned W      = 32,          // datapath width
-    parameter int unsigned N_IN   = 4,           // |input  basis|
-    parameter int unsigned N_OUT  = 4,           // |target basis|
-    //-----------------------------------------------------------------
-    // PER-BASIS CONSTANTS (all pre-computed offline)
-    // qi  : input  basis moduli
-    // bj  : target basis moduli
-    // zi  : yi-1  = (q/qi) ^-1  mod qi
-    // yib : (q/qi)            % bj
-    //-----------------------------------------------------------------
-    parameter logic [W-1:0] QI   [N_IN ] = '{default: 0},
-    parameter logic [W-1:0] ZI   [N_IN ] = '{default: 0},
-    parameter logic [W-1:0] BJ   [N_OUT] = '{default: 0},
-    parameter logic [W-1:0] YMODB[N_OUT][N_IN] = '{default:'{default:0}}
-) (
-    //-----------------------------------------------------------------
-    // INTERFACE
-    //-----------------------------------------------------------------
-    input  logic                     clk,
-    input  logic                     rst_n,
-
-    input  logic                     in_valid,
-    input  logic [W-1:0]             x   [N_IN],  // xi : residues in input basis
-
-    output logic                     out_valid,
-    output logic [W-1:0]             c   [N_OUT]  // cj : residues in target basis
-);
-    //-----------------------------------------------------------------
-    //  LOCAL FUNCTIONS
-    //  Simple (A*B)%M helper. Replace with Montgomery/Barrett as needed
-    //-----------------------------------------------------------------
-    function automatic logic [W-1:0] modmul
-        (
-         input logic [W-1:0] a,
-         input logic [W-1:0] b,
-         input logic [W-1:0] m
-        );
-        logic [2*W-1:0] product;
-        product = a * b;
-        modmul  = product % m;
-    endfunction
-
-    //-----------------------------------------------------------------
-    //  COMBINATIONAL CORE
-    //-----------------------------------------------------------------
-    logic [W-1:0] a     [N_IN ];           // ai  = (xi*zi) mod qi
-    logic [W-1:0] sum   [N_OUT];           // accumulator for each bj
-    integer                       i, j;
-
-    always_comb begin
-        // Step-1 : ai
-        for (i = 0; i < N_IN; i++) begin
-            a[i] = modmul(x[i], ZI[i], QI[i]);
-        end
-
-        // Step-2 : cj
-        for (j = 0; j < N_OUT; j++) begin
-            logic [W-1:0] acc;
-            acc = '0;
-            for (i = 0; i < N_IN; i++) begin
-                acc = (acc + modmul(a[i], YMODB[j][i], BJ[j])) % BJ[j];
-            end
-            sum[j] = acc;
-        end
-    end
-
-    //-----------------------------------------------------------------
-    //  SIMPLE HAND-SHAKE (1-cycle latency here, can be pipelined)
-    //-----------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            out_valid <= 1'b0;
-        end
-        else begin
-            out_valid <= in_valid;
-        end
-    end
-
-    // Drive outputs
-    for (genvar g = 0; g < N_OUT; g++) begin : OUT_ASSIGN
-        always_ff @(posedge clk) begin
-            if (in_valid) c[g] <= sum[g];
-        end
-    end
-endmodule
-
-
 `include "types.svh"
 
-module fastBConv #(
-    // GLOBAL SIZES
-    parameter int unsigned W      = RNS_PRIME_BITS, // datapath width
-    parameter int unsigned N_IN   = 4, // length(input basis)
-    parameter int unsigned N_OUT  = 4, // length(target basis)
-    // PER-BASIS CONSTANTS (all pre-computed offline)
+// multi-cycle fast base conversion for a single RNS Integer
+module fastBConvSingle #(
+    parameter int IN_BASIS_LEN, // num primes in input basis
+    parameter int OUT_BASIS_LEN, // num primes in target basis
+    // PER-BASIS CONSTANTS (all pre-computed)
     // qi  : input  basis moduli
     // bj  : target basis moduli
     // zi  : yi-1  = (q/qi) ^-1  mod qi
     // yib : (q/qi)            % bj
-    parameter logic [W-1:0] QI   [N_IN ] = '{default: 0},
-    parameter logic [W-1:0] ZI   [N_IN ] = '{default: 0},
-    parameter logic [W-1:0] BJ   [N_OUT] = '{default: 0},
-    parameter logic [W-1:0] YMODB[N_OUT][N_IN] = '{default:'{default:0}}
+    parameter rns_residue_t IN_BASIS [IN_BASIS_LEN],
+    parameter rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
+    parameter rns_residue_t ZiLUT [IN_BASIS_LEN],
+    parameter rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
 ) (
-    // IO
-    input  logic                     clk,
-    input  logic                     rst_n,
+    input wire clk,
+    input wire reset,
 
-    input  logic                     in_valid,
-    input  logic [W-1:0]             x   [N_IN],  // xi : residues in input basis
+    input wire in_valid, // triggers the calculations to start
+    input wire rns_residue_t input_RNSint [IN_BASIS_LEN],
 
-    output logic                     out_valid,
-    output logic [W-1:0]             c   [N_OUT]  // cj : residues in target basis
+    output wire out_valid,
+    output rns_residue_t output_RNSint [OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
 );
+    // control state registers
+    reg [$clog2(IN_BASIS_LEN)-1:0] current_state;
+    reg compute_is_active;
+
+    // compute "a" for every residue in the input
+    wire wide_rns_residue_t a_re_nomod [IN_BASIS_LEN];
+    wire rns_residue_t n_a_res [IN_BASIS_LEN];
+    rns_residue_t a_res [IN_BASIS_LEN]; // register
+
+    genvar i;
+    generate
+        // all steps are indpendent/parallel
+        for (i = 0; i < IN_BASIS_LEN; ++i) begin : GEN_A_COEFFS
+            assign a_re_nomod[i] = input_RNSint[i] * ZiLUT[i];
+            assign n_a_res[i] = a_re_nomod[i] % IN_BASIS[i];
+        end
+    endgenerate
+    
+    // accumulate the new RNS prime from partial sums calculated over multiple (IN_BASIS_LEN) cycles
+    wire rns_residue_t psum [OUT_BASIS_LEN];
+    wire wide_rns_residue_t psum_nomod [OUT_BASIS_LEN];
+    wire rns_residue_t n_total_sum [OUT_BASIS_LEN];
+    wire [`RNS_PRIME_BITS:0] wide_n_total_sum [OUT_BASIS_LEN];
+    genvar j;
+    generate
+        // all steps are indpendent/parallel
+        for (j = 0; j < OUT_BASIS_LEN; j++) begin : PSUM_GEN
+            // multiplication needs a real mod
+            assign psum_nomod[j] = a_res[current_state] * YMODB[j][current_state];
+            assign psum[j] = psum_nomod[j] % OUT_BASIS[j];
+            assign wide_n_total_sum[j] = output_RNSint[j] + psum[j];
+            // addition can use a "fake" mod
+            assign n_total_sum[j] = (wide_n_total_sum[j] >= OUT_BASIS[j]) ? (wide_n_total_sum[j] - OUT_BASIS[j]) : wide_n_total_sum[j];
+        end
+    endgenerate
+
+    assign out_valid = (current_state==IN_BASIS_LEN);
+    // sequential logic / state machine controller
+    always_ff @( posedge clk ) begin : MULTICYCLE_REGS
+        // if in_valid, start the state counter and latch the computed "a" coefficients
+        current_state <= (reset || in_valid) ? '0 : (compute_is_active ? (current_state + 1) : current_state);
+        compute_is_active <= reset ? 0 : (in_valid ? 1 : (out_valid ? 0 : compute_is_active));
+        //
+        // first pipeline stage computes "a" coefs
+        a_res <= in_valid ? n_a_res : a_res;
+        // second stage writes to the output register, and takes "OUT_BASIS_LEN" cycles
+        output_RNSint <= in_valid ? '{default:'0} : (compute_is_active ? n_total_sum : output_RNSint);
+    end
 endmodule
+
+
+
+// TODO in the future, we should move the control logic here because we don't need control for each single block
+// for now, fastBConvSingle is tested and working
+module fastBConv #(
+    parameter int IN_BASIS_LEN,
+    parameter int OUT_BASIS_LEN,
+    parameter rns_residue_t IN_BASIS [IN_BASIS_LEN],
+    parameter rns_residue_t OUT_BASIS [OUT_BASIS_LEN],
+    parameter rns_residue_t ZiLUT [IN_BASIS_LEN],
+    parameter rns_residue_t YMODB [OUT_BASIS_LEN][IN_BASIS_LEN]
+) (
+    input wire clk,
+    input wire reset,
+
+    input wire in_valid,
+    input wire rns_residue_t input_RNSpoly [`N_SLOTS][IN_BASIS_LEN],
+
+    output wire out_valid,
+    output rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
+);
+
+    wire [`N_SLOTS-1:0] slot_out_valid;
+    
+    genvar k;
+    generate
+        for (k = 0; k < `N_SLOTS; k++) begin : FASTBCONV_INSTS
+            fastBConvSingle #(
+                .IN_BASIS_LEN(IN_BASIS_LEN),
+                .OUT_BASIS_LEN(OUT_BASIS_LEN),
+                .IN_BASIS(IN_BASIS),
+                .OUT_BASIS(OUT_BASIS),
+                .ZiLUT(ZiLUT),
+                .YMODB(YMODB)
+            ) conv_inst (
+                .clk(clk),
+                .reset(reset),
+                .in_valid(in_valid), // could be indexed if you're triggering each slot separately
+                .input_RNSint(input_RNSpoly[k]), // [IN_BASIS_LEN] slice for this slot
+                .out_valid(slot_out_valid[k]),
+                .output_RNSint(output_RNSpoly[k])
+            );
+        end
+    endgenerate
+
+    assign out_valid = slot_out_valid[0]; // logic is identical for all (it is redundant)
+endmodule
+

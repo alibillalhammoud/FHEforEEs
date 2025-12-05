@@ -64,14 +64,6 @@ def nparr_int_round(dividend: np.ndarray, divisor: int) -> np.ndarray:
     half = divisor >> 1
     return (dividend+half) // divisor
 
-def _INTERNAL_get_next_prime(x, plistiter):
-    try:
-        next_x = next(plistiter)
-        assert next_x > x
-    except Exception:
-        raise RuntimeError("No more primes available or other error with get_next_prime") from None
-    return next_x
-
 def gen_RNS_basis(lower_bound: int, max_residue_size: int, multiple_of: Iterable = None, scheme_SIMD_slots: int = None) -> np.ndarray:
     """Generates a valid ResidueNumberSystem basis (a set of co-prime integers)
     RNS can be used for modulo arithmetic on very large integers. This algorithm is deterministic
@@ -271,10 +263,10 @@ class RNSInteger:
         # precompute
         q = self.modulus
         y  = [q // qi for qi in self.basis] # yi = q/qi
+        z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)] # zi = yi^{-1} mod qi
         y_mod_b = list()
         for j, bj in enumerate(target_basis):
             y_mod_b.append([yi % bj for yi in y])
-        z  = [sympy.mod_inverse(yi, qi) for yi, qi in zip(y, self.basis)] # zi = yi^{-1} mod qi
         # Hardware step
         a  = [(xi * zi) % qi for xi, zi, qi in zip(self.residues, z, self.basis)]  # ai
         c_res = []
@@ -330,40 +322,25 @@ class RNSInteger:
         Ba_bigmodulus = np.prod(Ba)
         b_inv_Ba_bigint = sympy.mod_inverse(b_bigmodulus,Ba_bigmodulus)
         b_inv_Ba = np.array([b_inv_Ba_bigint % prime for prime in Ba], dtype=object)
+        assert len(b_inv_Ba)==1, "Ba must fit inside 1 residue"
         b_mod_q = np.array([b_bigmodulus % int(p) for p in q], dtype=object)
         #
         # step 1: mod drops
         xB = self._moddrop(B) # residues only on B
         xBa = self._moddrop(Ba) # residues only on Ba
-        # Step 2: compute gamma
-        # BFV with RNS paper and the fhetextbook directly take gamma as a big int
-        # This is because gamma is bounded (small), ensuring it fits into a machine word
-        temp = (xB.fastBconv(Ba).residues - xBa.residues) % Ba
-        gamma_Ba = (temp * b_inv_Ba) % Ba # gamma in Ba basis
-        # Step 3: convert gamma to the q basis in INT form (this is the correction term)
-        gamma_q = RNSInteger._from_residues(gamma_Ba, Ba).centeredBconv(q).residues
+        assert len(xBa.residues)==1 and len(Ba)==1, "Ba must fit inside 1 residue"
+        xBa = xBa.residues[0] # xBa is a plain integer now (not RNS)
+        # Step 2: compute gamma (plain integer because Ba basis must have only 1 residue)
+        temp = (xB.fastBconv(Ba).residues[0] - xBa) % Ba[0]
+        Ba = Ba[0]
+        gamma_Ba = (temp * b_inv_Ba[0]) % Ba # gamma in Ba basis
+        if gamma_Ba > Ba // 2:
+            gamma_Ba -= Ba
         # Step 4: final exact conversion
         xB_to_q = xB.fastBconv(q).residues
-        result_residues = (xB_to_q - gamma_q * b_mod_q) % q
+        result_residues = (xB_to_q - gamma_Ba * b_mod_q) % q
         # return and error checking (ensure gamma was not too big)
-        symreconst,_ = sympy.ntheory.modular.crt(list(map(int, Ba)), list(map(int, gamma_Ba)), symmetric=True)
-        if symreconst > (2**32):
-            raise ValueError("int too BIG!!!!!")
         return RNSInteger._from_residues(result_residues, q)
-
-    def centeredBconv(self, target_basis: Iterable[int]) -> "RNSInteger":
-        """Convert the current representation to `target_basis`.
-        A simple and *always correct* strategy is:
-          1. Reconstruct the integer via CRT.
-          2. Reduce it modulo each target modulus.
-        """
-        target_basis = np.asarray(list(target_basis), dtype=object)
-        val, _ = sympy.ntheory.modular.crt(list(map(int, self.basis)), list(map(int, self.residues)), symmetric=True)
-        new_res = np.array([val % int(m) for m in target_basis], dtype=object)
-        out = RNSInteger(0, target_basis, int(np.prod(target_basis)))
-        out.residues = new_res
-        return out
-
 
 def polynomial_RNSmult_constant(constant: int, polyRNScoeffs: Iterable) -> np.ndarray:
     """Create and return an np.ndarray representing the multiplication of each coefficient by the integer constant"""
