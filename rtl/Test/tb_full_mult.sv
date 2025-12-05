@@ -1,22 +1,22 @@
 `timescale 1ns/1ps
 
-module tb_full_mult;
+module poly_mult_tb;
 
     // =================================================================
     // 1. PARAMETERS & CONFIGURATION
     // =================================================================
-    localparam W = 32;
+    localparam W = 100;
     localparam N = 8;
-    localparam Modulus_Q = 241;
+    localparam unsigned Modulus_Q = 2147483777;
     
     // NTT Parameters
-    localparam OMEGA     = 30;  // 241 is prime, Omega=30 is 8-th root of unity
-    localparam OMEGA_INV = 233; // Inverse of 30 mod 241
+    localparam OMEGA     = 1061363846;  // 241 is prime, Omega=30 is 8-th root of unity
+    localparam OMEGA_INV = 1237364089; // Inverse of 30 mod 241
     
     // Negacyclic Convolution Parameters (psi^2 = omega)
-    localparam PSI       = 111; // 16-th root of unity
-    localparam PSI_INV   = 76; 
-    localparam N_INV     = 211; // 8^-1 mod 241
+    localparam PSI       = 1323801281; // 16-th root of unity
+    localparam PSI_INV   = 2145878094; 
+    localparam N_INV     = 1879048305; // 8^-1 mod 241
 
     // Signals
     logic clk;
@@ -105,26 +105,28 @@ module tb_full_mult;
             p_pow = (p_pow * factor) % Modulus_Q;
         end
     endtask
-        task calc_twist_untwista(
+    task calc_twist_untwista(
         input logic [W-1:0] in_arr [0:N-1],
         output logic [W-1:0] out_arr [0:N-1],
-        input int factor
-    );
+        input longint factor
+        );
         longint p_pow = 1;
         for(int i=0; i<N; i++) begin
+            $display("i=%0d, p_pow=%0d", i, p_pow);
             out_arr[i] = (longint'(in_arr[i]) * p_pow) % Modulus_Q;
-            p_pow = (p_pow * factor) % Modulus_Q;
+            p_pow = (unsigned'(p_pow * factor)) % Modulus_Q;
+            
         end
     endtask
-        task calc_twist_untwistb(
+    task calc_twist_untwistb(
         input logic [W-1:0] in_arr [0:N-1],
         output logic [W-1:0] out_arr [0:N-1],
-        input int factor
-    );
+        input longint factor
+        );
         longint p_pow = 1;
         for(int i=0; i<N; i++) begin
             out_arr[i] = (longint'(in_arr[i]) * p_pow) % Modulus_Q;
-            p_pow = (p_pow * factor) % Modulus_Q;
+            p_pow = (unsigned'(p_pow * factor)) % Modulus_Q;
         end
     endtask
 
@@ -195,7 +197,7 @@ module tb_full_mult;
         iNTT_mode = 0;
         
         // Setup Input Polynomials
-        poly_a = '{1, 2, 3, 4, 5, 6, 3, 8};
+        poly_a = '{1, 2, 3, 4, 5, 6, 7, 8};
         poly_b = '{1, 2, 3, 4, 5, 6, 7, 8};
 
         $display("\n=========================================================");
