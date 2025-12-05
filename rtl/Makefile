@@ -5,7 +5,7 @@ LIB      = /usr/caen/misc/class/eecs470/lib/verilog/lec25dscc25.v
 
 # ---- DUT / Testbench definitions ----
 # CPU + regfile
-DUT_CPU = verilog/cpu.sv verilog/regfile.sv verilog/adder.sv verilog/mult.sv
+DUT_CPU = verilog/cpu.sv verilog/regfile.sv verilog/adder.sv verilog/mult.sv verilog/ntt_full.sv verilog/ntt_butterfly.sv
 TB_CPU  = test/cpu_test.sv
 
 DUT_RF  = verilog/regfile.sv

@@ -182,9 +182,46 @@ module cpu (
     .out_ba (mul_out_2_ba)
   );
 
-  // NTT 1 & 2 (stubbed for now)
-  assign ntt_out_1_q = '{default: '0};
-  assign ntt_out_2_q = '{default: '0};
+  // NTT 1 & 2
+  // ntt_block_radix2_pipelined #(
+  //   .W(32),
+  //   .N(`N_SLOTS),
+  //   .Modulus_Q(241),
+  //   .OMEGA(30),
+  //   .OMEGA_INV(233)
+  // ) u_ntt_1(
+  //   .clk(clk),
+  //   .reset(reset),
+    
+  //   .data_valid_in(), 
+  //   .iNTT_mode(inverse),    
+
+  //   .Data_in(op_a_q),
+
+  //   .Data_out(ntt_out_1_q),
+  //   .data_valid_out(), 
+  //   .mode_out()       
+  // );
+
+  // ntt_block_radix2_pipelined #(
+  //   .W(32),
+  //   .N(8),
+  //   .Modulus_Q(241),
+  //   .OMEGA(30),
+  //   .OMEGA_INV(233)
+  // ) u_ntt_2(
+  //   .clk(clk),
+  //   .reset(reset),
+    
+  //   .data_valid_in(), 
+  //   .iNTT_mode(inverse),    
+
+  //   .Data_in(op_c_q),
+
+  //   .Data_out(ntt_out_2_q),
+  //   .data_valid_out(), 
+  //   .mode_out()       
+  // );
 
   // ============================
   //  Controller
@@ -199,9 +236,11 @@ module cpu (
     wb_0_q     = 1'b0;
     wb_1_q     = 1'b0;
     done       = 1'b0;
+    inverse    = 1'b0;
 
     if (stage1_valid) begin 
       unique case (stage1_op_mode)
+        NO_OP: ;
         OP_CT_CT_ADD: begin
           op_a_q     = stage1_src0_q;  // CT0.A
           op_b_q     = stage1_src2_q;  // CT1.A
@@ -227,85 +266,85 @@ module cpu (
           done       = 1;
         end
 
-        // OP_CT_PT_MUL: begin
-        //   case (stage)
-        //   // CT1.A * Plaintext
-        //   // TWIST
-        //   4'b0001: begin
-        //     op_a     = stage1_src0_q;                       // CT1.A (vec)
-        //     op_b     = twist_factor;
-        //     op_c     = stage1_src2_q;                       // PT (vec)
-        //     op_d     = twist_factor;
-        //     fu_out_1 = mul_out_1;
-        //     fu_out_2 = mul_out_2;
-        //   end
-        //   // NTT
-        //   4'b0010: begin
-        //     inverse  = 1'b0;
-        //     op_a     = dest0_coefficient;
-        //     op_c     = dest1_coefficient;
-        //     fu_out_1 = ntt_out_1;
-        //     fu_out_2 = ntt_out_2;
-        //   end
-        //   // MUL
-        //   4'b0011: begin
-        //     op_a     = dest0_coefficient;
-        //     op_b     = dest1_coefficient;
-        //     fu_out_1 = mul_out_1;
-        //   end
-        //   // Inverse NTT
-        //   4'b0100: begin
-        //     inverse  = 1'b1;
-        //     op_a     = dest0_coefficient;
-        //     fu_out_1 = ntt_out_1;
-        //   end
-        //   // Untwist
-        //   4'b0101: begin
-        //     op_a     = dest0_coefficient;
-        //     op_b     = untwist_factor;
-        //     fu_out_1 = mul_out_1;
-        //     wb_0_q     = 1;
-        //   end
+        OP_CT_PT_MUL: begin
+          case (stage)
+          // CT1.A * Plaintext
+          // TWIST
+          4'b0001: begin
+            op_a_q     = stage1_src0_q;                       // CT1.A (vec)
+            op_b_q     = twist_factor;
+            op_c_q     = stage1_src3_q;                       // PT (vec)
+            op_d_q     = twist_factor;
+            fu_out_1_q = mul_out_1_q;
+            fu_out_2_q = mul_out_2_q;
+          end
+          // NTT
+          4'b0010: begin
+            inverse    = 1'b0;
+            op_a_q     = dest0_poly_q;
+            op_c_q     = dest1_poly_q;
+            fu_out_1_q = ntt_out_1_q;
+            fu_out_2_q = ntt_out_2_q;
+          end
+          // MUL
+          4'b0011: begin
+            op_a_q     = dest0_poly_q;
+            op_b_q     = dest1_poly_q;
+            fu_out_1_q = mul_out_1_q;
+          end
+          // Inverse NTT
+          4'b0100: begin
+            inverse    = 1'b1;
+            op_a_q     = dest0_poly_q;
+            fu_out_1_q = ntt_out_1_q;
+          end
+          // Untwist
+          4'b0101: begin
+            op_a_q     = dest0_poly_q;
+            op_b_q     = untwist_factor;
+            fu_out_1_q = mul_out_1_q;
+            wb_0_q     = 1;
+          end
 
-        //   // CT1.B * Plaintext
-        //   4'b0110: begin
-        //     op_a     = stage1_src1_q;                       // CT1.B
-        //     op_b     = twist_factor;
-        //     op_c     = stage1_src2_q;                       // PT
-        //     op_d     = twist_factor;
-        //     fu_out_1 = mul_out_1;
-        //     fu_out_2 = mul_out_2;
-        //   end
-        //   // NTT
-        //   4'b0111: begin
-        //     inverse  = 1'b0;
-        //     op_a     = dest0_coefficient;
-        //     op_c     = dest1_coefficient;
-        //     fu_out_1 = ntt_out_1;
-        //     fu_out_2 = ntt_out_2;
-        //   end
-        //   // MUL
-        //   4'b1000: begin
-        //     op_a     = dest0_coefficient;
-        //     op_b     = dest1_coefficient;
-        //     fu_out_1 = mul_out_1;
-        //   end
-        //   // Inverse NTT
-        //   4'b1001: begin
-        //     inverse  = 1'b1;
-        //     op_a     = dest0_coefficient;
-        //     fu_out_1 = ntt_out_1;
-        //   end
-        //   // Untwist
-        //   4'b1010: begin
-        //     op_a     = dest0_coefficient;
-        //     op_b     = untwist_factor;
-        //     fu_out_1 = mul_out_1;
-        //     wb_1_q     = 1;
-        //     done     = 1;
-        //   end
-        //   endcase  
-        // end
+          // CT1.B * Plaintext
+          4'b0110: begin
+            op_a_q     = stage1_src1_q;                       // CT1.B
+            op_b_q     = twist_factor;
+            op_c_q     = stage1_src3_q;                       // PT
+            op_d_q     = twist_factor;
+            fu_out_1_q = mul_out_1_q;
+            fu_out_2_q = mul_out_2_q;
+          end
+          // NTT
+          4'b0111: begin
+            inverse    = 1'b0;
+            op_a_q     = dest0_poly_q;
+            op_c_q     = dest1_poly_q;
+            fu_out_1_q = ntt_out_1_q;
+            fu_out_2_q = ntt_out_2_q;
+          end
+          // MUL
+          4'b1000: begin
+            op_a_q     = dest0_poly_q;
+            op_b_q     = dest1_poly_q;
+            fu_out_1_q = mul_out_1_q;
+          end
+          // Inverse NTT
+          4'b1001: begin
+            inverse    = 1'b1;
+            op_a_q     = dest0_poly_q;
+            fu_out_1_q = ntt_out_1_q;
+          end
+          // Untwist
+          4'b1010: begin
+            op_a_q     = dest0_poly_q;
+            op_b_q     = untwist_factor;
+            fu_out_1_q = mul_out_1_q;
+            wb_1_q     = 1;
+            done       = 1;
+          end
+          endcase  
+        end
 
       endcase
     end

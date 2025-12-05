@@ -55,8 +55,8 @@ typedef wide_rns_int_Ba_BASIS_t wide_Ba_BASIS_poly [`N_SLOTS];
 // precalculated values
 // ---------------------------
 // Example constant “twist” factors (all 1s for now)
-parameter rns_residue_t twist_factor   [`N_SLOTS] = '{default: '1};
-parameter rns_residue_t untwist_factor [`N_SLOTS] = '{default: '1};
+parameter q_BASIS_poly twist_factor   = '{default: '1};
+parameter q_BASIS_poly untwist_factor = '{default: '1};
 
 // fastBConv precalculated inverses
 parameter rns_residue_t z_MOD_q[`q_BASIS_LEN] = '{`RNS_PRIME_BITS'd158, `RNS_PRIME_BITS'd1340848717, `RNS_PRIME_BITS'd1950706637, `RNS_PRIME_BITS'd136505383, `RNS_PRIME_BITS'd1261863396, `RNS_PRIME_BITS'd490720514, `RNS_PRIME_BITS'd2048232271, `RNS_PRIME_BITS'd561180295, `RNS_PRIME_BITS'd2064343317, `RNS_PRIME_BITS'd1284162414, `RNS_PRIME_BITS'd426116969};

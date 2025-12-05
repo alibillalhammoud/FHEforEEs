@@ -22,6 +22,7 @@ module tb_cpu;
   // Wait until done_out == 1
   task wait_done();
     @(posedge clk);
+    op.mode = NO_OP;
     while (!done_out) @(posedge clk);
     @(posedge clk); // allow writeback to settle
   endtask
@@ -187,16 +188,16 @@ module tb_cpu;
     op.out_a  = 7; // result.A stored in reg[7]
     op.out_b  = 8; // result.B stored in reg[8]
 
-    // wait_done();
-    @(posedge clk);
-    @(posedge clk);
-    $display("op_a: %0d, op_b: %0d", u_cpu.op_a_q[0][0], u_cpu.op_b_q[0][0]); 
-    $display("op_c: %0d, op_d: %0d", u_cpu.op_c_q[0][0], u_cpu.op_d_q[0][0]); 
-    $display("Add_out_1: %0d, Add_out_2: \n", u_cpu.add_out_1[0][0], u_cpu.add_out_2[0][0]); 
-    @(posedge clk);
-    @(posedge clk);
-    @(posedge clk);
-    $display(" Done: %0b\n", done_out);
+    wait_done();
+    // @(posedge clk);
+    // @(posedge clk);
+    // $display("op_a: %0d, op_b: %0d", u_cpu.op_a_q[0][0], u_cpu.op_b_q[0][0]); 
+    // $display("op_c: %0d, op_d: %0d", u_cpu.op_c_q[0][0], u_cpu.op_d_q[0][0]); 
+    // $display("Add_out_1: %0d, Add_out_2: \n", u_cpu.add_out_1[0][0], u_cpu.add_out_2[0][0]); 
+    // @(posedge clk);
+    // @(posedge clk);
+    // @(posedge clk);
+    // $display(" Done: %0b\n", done_out);
 
     // Read results
     outA = u_cpu.u_rf_q.mem[7];
