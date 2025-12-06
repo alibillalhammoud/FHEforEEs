@@ -35,13 +35,16 @@ module cpu (
   logic       inverse; // NTT direction flag
   logic     wb_0_q, wb_1_q, done;
 
+  logic ntt_1_valid_in, ntt_1_valid_out, ntt_2_valid_in, ntt_2_valid_out;
+  logic doing_ntt;
+
   q_BASIS_poly   op_a_q, op_b_q, op_c_q, op_d_q;
   B_BASIS_poly   op_a_b, op_b_b, op_c_b, op_d_b;
   Ba_BASIS_poly  op_a_ba, op_b_ba, op_c_ba, op_d_ba;
 
   q_BASIS_poly  add_out_1, add_out_2, mul_out_1_q, mul_out_2_q, fu_out_1_q, fu_out_2_q, ntt_out_1_q, ntt_out_2_q;
-  B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b;
-  Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba;
+  B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b, ntt_out_1_b, ntt_out_2_b;
+  Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba, ntt_out_1_ba, ntt_out_2_ba;
 
   logic stage1_valid;
   q_BASIS_poly stage1_src0_q;
@@ -134,7 +137,7 @@ module cpu (
       dest0_poly_q      <= fu_out_1_q;
       dest1_poly_q      <= fu_out_2_q;
       done_out          <= done; 
-      stage             <= (done) ? 4'b0 : stage + 1;
+      stage             <= (done) ? 4'b0 : (doing_ntt & ~ntt_1_valid_out) ? stage : stage + 1;
     end
   end
 
@@ -183,45 +186,101 @@ module cpu (
   );
 
   // NTT 1 & 2
-  // ntt_block_radix2_pipelined #(
-  //   .W(32),
-  //   .N(`N_SLOTS),
-  //   .Modulus_Q(241),
-  //   .OMEGA(30),
-  //   .OMEGA_INV(233)
-  // ) u_ntt_1(
-  //   .clk(clk),
-  //   .reset(reset),
-    
-  //   .data_valid_in(), 
-  //   .iNTT_mode(inverse),    
+  logic [`qBBa_BASIS_LEN-1:0] ntt_1_valid_out_array;
+  logic [`qBBa_BASIS_LEN-1:0] ntt_2_valid_out_array;
 
-  //   .Data_in(op_a_q),
+  genvar i;
+  generate 
+    for (i = 0; i < `qBBa_BASIS_LEN; i++) begin : gen_ntt_blocks
 
-  //   .Data_out(ntt_out_1_q),
-  //   .data_valid_out(), 
-  //   .mode_out()       
-  // );
+      // Calculate basis type and local index once
+      localparam int BASIS_TYPE = (i < `q_BASIS_LEN) ? 0 : 
+                                  (i < (`q_BASIS_LEN + `B_BASIS_LEN)) ? 1 : 2;
+      localparam int LOCAL_IDX = (i < `q_BASIS_LEN) ? i :
+                                (i < (`q_BASIS_LEN + `B_BASIS_LEN)) ? (i - `q_BASIS_LEN) :
+                                (i - `q_BASIS_LEN - `B_BASIS_LEN);
+      
+      // Use generate if for compile-time conditional elaboration
+      rns_residue_t data_in_a [0:`N_SLOTS-1];
+      rns_residue_t data_in_c [0:`N_SLOTS-1];
+      rns_residue_t data_out_1 [0:`N_SLOTS-1];
+      rns_residue_t data_out_2 [0:`N_SLOTS-1];
 
-  // ntt_block_radix2_pipelined #(
-  //   .W(32),
-  //   .N(8),
-  //   .Modulus_Q(241),
-  //   .OMEGA(30),
-  //   .OMEGA_INV(233)
-  // ) u_ntt_2(
-  //   .clk(clk),
-  //   .reset(reset),
-    
-  //   .data_valid_in(), 
-  //   .iNTT_mode(inverse),    
+      if (BASIS_TYPE == 0) begin : q_basis_assignment
+        always_comb begin
+          for (int s = 0; s < `N_SLOTS; s++) begin
+            data_in_a[s] = op_a_q[s][LOCAL_IDX];
+            data_in_c[s] = op_c_q[s][LOCAL_IDX];
+            ntt_out_1_q[s][LOCAL_IDX] = data_out_1[s];
+            ntt_out_2_q[s][LOCAL_IDX] = data_out_2[s];
+          end
+        end
+      end else if (BASIS_TYPE == 1) begin : b_basis_assignment
+        always_comb begin
+          for (int s = 0; s < `N_SLOTS; s++) begin
+            data_in_a[s] = op_a_b[s][LOCAL_IDX];
+            data_in_c[s] = op_c_b[s][LOCAL_IDX];
+            ntt_out_1_b[s][LOCAL_IDX] = data_out_1[s];
+            ntt_out_2_b[s][LOCAL_IDX] = data_out_2[s];
+          end
+        end
+      end else begin : ba_basis_assignment  // BASIS_TYPE == 2
+        always_comb begin
+          for (int s = 0; s < `N_SLOTS; s++) begin
+            data_in_a[s] = op_a_ba[s][LOCAL_IDX];
+            data_in_c[s] = op_c_ba[s][LOCAL_IDX];
+            ntt_out_1_ba[s][LOCAL_IDX] = data_out_1[s];
+            ntt_out_2_ba[s][LOCAL_IDX] = data_out_2[s];
+          end
+        end
+      end
+      
+      // {q_BASIS_poly[0][i], q_BASIS_poly[1][i], ... , q_BASIS_poly[`N_SLOTS - 1][i] }
 
-  //   .Data_in(op_c_q),
+      ntt_block_radix2_pipelined #(
+        .W(`RNS_PRIME_BITS),
+        .N(`N_SLOTS),
+        .Modulus_Q(qBBa_BASIS[i]),
+        .OMEGA(w_BASIS[i]), // parameter need to be instantiate in the type def. 
+        .OMEGA_INV(w_INV_BASIS[i])
+      ) u_ntt_1(
+        .clk(clk),
+        .reset(reset),
+        
+        .data_valid_in(ntt_1_valid_in), 
+        .iNTT_mode(inverse),    
 
-  //   .Data_out(ntt_out_2_q),
-  //   .data_valid_out(), 
-  //   .mode_out()       
-  // );
+        .Data_in(data_in_a),
+
+        .Data_out(data_out_1),
+        .data_valid_out(ntt_1_valid_out_array[i]), 
+        .mode_out()       
+      );
+
+      ntt_block_radix2_pipelined #(
+        .W(`RNS_PRIME_BITS),
+        .N(`N_SLOTS),
+        .Modulus_Q(qBBa_BASIS[i]),
+        .OMEGA(w_BASIS[i]), // parameter need to be instantiate in the type def. 
+        .OMEGA_INV(w_INV_BASIS[i])
+      ) u_ntt_2(
+        .clk(clk),
+        .reset(reset),
+        
+        .data_valid_in(ntt_2_valid_in), 
+        .iNTT_mode(inverse),    
+
+        .Data_in(data_in_c),
+
+        .Data_out(data_out_2),
+        .data_valid_out(ntt_2_valid_out_array[i]), 
+        .mode_out()       
+      );
+    end
+  endgenerate
+
+  assign ntt_1_valid_out = &ntt_1_valid_out_array;
+  assign ntt_2_valid_out = &ntt_2_valid_out_array; 
 
   // ============================
   //  Controller
@@ -237,6 +296,9 @@ module cpu (
     wb_1_q     = 1'b0;
     done       = 1'b0;
     inverse    = 1'b0;
+    ntt_1_valid_in = 1'b0;
+    ntt_2_valid_in = 1'b0;
+    doing_ntt = 1'b0;
 
     if (stage1_valid) begin 
       unique case (stage1_op_mode)
@@ -259,7 +321,7 @@ module cpu (
           op_b_q       = '{default: '0};  // 0
           op_c_q       = stage1_src1_q; // CT1.B     
           op_d_q       = stage1_src3_q; // Scaled PT            
-          fu_out_1_q = op_a_q;
+          fu_out_1_q = add_out_1;
           fu_out_2_q = add_out_2;    
           wb_0_q     = 1;                
           wb_1_q     = 1;
@@ -272,36 +334,41 @@ module cpu (
           // TWIST
           4'b0001: begin
             op_a_q     = stage1_src0_q;                       // CT1.A (vec)
-            op_b_q     = twist_factor;
+            op_b_q     = twist_factor_q;
             op_c_q     = stage1_src3_q;                       // PT (vec)
-            op_d_q     = twist_factor;
+            op_d_q     = twist_factor_q;
             fu_out_1_q = mul_out_1_q;
             fu_out_2_q = mul_out_2_q;
           end
           // NTT
           4'b0010: begin
             inverse    = 1'b0;
-            op_a_q     = dest0_poly_q;
-            op_c_q     = dest1_poly_q;
+            op_a_q     = dest0_poly_q; //CT1.A * twist_factor_q
+            op_c_q     = dest1_poly_q; //PT * twist_factor_q
             fu_out_1_q = ntt_out_1_q;
             fu_out_2_q = ntt_out_2_q;
+            ntt_1_valid_in = 1'b1;
+            ntt_2_valid_in = 1'b1;
+            doing_ntt = 1'b1;
           end
           // MUL
           4'b0011: begin
-            op_a_q     = dest0_poly_q;
-            op_b_q     = dest1_poly_q;
-            fu_out_1_q = mul_out_1_q;
+            op_a_q     = dest0_poly_q; //NTT'd CT1.A * twist_factor_q
+            op_b_q     = dest1_poly_q; //NTT'd PT * twist_factor_q
+            fu_out_1_q = mul_out_1_q; // Correct CT1.A * PT
           end
           // Inverse NTT
           4'b0100: begin
             inverse    = 1'b1;
             op_a_q     = dest0_poly_q;
             fu_out_1_q = ntt_out_1_q;
+            ntt_1_valid_in = 1'b1;
+            doing_ntt = 1'b1;
           end
           // Untwist
           4'b0101: begin
             op_a_q     = dest0_poly_q;
-            op_b_q     = untwist_factor;
+            op_b_q     = untwist_factor_q;
             fu_out_1_q = mul_out_1_q;
             wb_0_q     = 1;
           end
@@ -309,9 +376,9 @@ module cpu (
           // CT1.B * Plaintext
           4'b0110: begin
             op_a_q     = stage1_src1_q;                       // CT1.B
-            op_b_q     = twist_factor;
+            op_b_q     = twist_factor_q;
             op_c_q     = stage1_src3_q;                       // PT
-            op_d_q     = twist_factor;
+            op_d_q     = twist_factor_q;
             fu_out_1_q = mul_out_1_q;
             fu_out_2_q = mul_out_2_q;
           end
@@ -322,6 +389,9 @@ module cpu (
             op_c_q     = dest1_poly_q;
             fu_out_1_q = ntt_out_1_q;
             fu_out_2_q = ntt_out_2_q;
+            ntt_1_valid_in = 1'b1;
+            ntt_2_valid_in = 1'b1;
+            doing_ntt = 1'b1;
           end
           // MUL
           4'b1000: begin
@@ -334,11 +404,13 @@ module cpu (
             inverse    = 1'b1;
             op_a_q     = dest0_poly_q;
             fu_out_1_q = ntt_out_1_q;
+            ntt_1_valid_in = 1'b1;
+            doing_ntt = 1'b1;
           end
           // Untwist
           4'b1010: begin
             op_a_q     = dest0_poly_q;
-            op_b_q     = untwist_factor;
+            op_b_q     = untwist_factor_q;
             fu_out_1_q = mul_out_1_q;
             wb_1_q     = 1;
             done       = 1;
