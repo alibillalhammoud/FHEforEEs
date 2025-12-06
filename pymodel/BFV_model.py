@@ -152,7 +152,10 @@ class BFVSchemeServer:
         D1 = np.array([coef.mul_constant(self.config.t) for coef in D1], dtype=object)
         D2 = np.array([coef.mul_constant(self.config.t) for coef in D2], dtype=object)
         # modswitch from q*B*Ba (current representation) to B*Ba (RNS_BBa)
+        D0before = [[element for element in row.residues] for row in D0]
         D0 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D0], dtype=object)
+        D0after = [[element for element in row.residues] for row in D0]
+        import pdb; pdb.set_trace()
         D1 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D1], dtype=object)
         D2 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D2], dtype=object)
         # fastBconv from B*Ba to q

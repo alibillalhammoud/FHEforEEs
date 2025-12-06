@@ -292,6 +292,7 @@ class RNSInteger:
         # Fast base convert the "to-be-dropped" part onto the q-basis
         x_d = RNSInteger._from_residues(self.residues[drop_idx], d_basis)
         xhat_f = x_d.fastBconv(f_basis).residues
+        import pdb; pdb.set_trace()
         # Finish the mod-switch
         new_res = []
         for pos, fi in enumerate(f_basis):

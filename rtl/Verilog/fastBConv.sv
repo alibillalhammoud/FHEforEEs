@@ -23,6 +23,11 @@ module fastBConvSingle #(
     output wire out_valid,
     output rns_residue_t output_RNSint [OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
 );
+    // verilog compilation error checking
+    if ((IN_BASIS_LEN==1 && IN_BASIS[0]==0) || (OUT_BASIS_LEN==1 && OUT_BASIS[0]==0) || ZiLUT[0]==0) begin
+        $fatal(1,"fastBConv: parameters must be overridden (or you cant pick len=1 and basis[0]=0)");
+    end
+
     // control state registers
     reg [$clog2(IN_BASIS_LEN)-1:0] current_state;
     reg compute_is_active;
@@ -50,7 +55,7 @@ module fastBConvSingle #(
     generate
         // all steps are indpendent/parallel
         for (j = 0; j < OUT_BASIS_LEN; j++) begin : PSUM_GEN
-            // multiplication needs a real mod
+            // multiplication needs a real mod // % IN_BASIS_LEN
             assign psum_nomod[j] = a_res[current_state] * YMODB[j][current_state];
             assign psum[j] = psum_nomod[j] % OUT_BASIS[j];
             assign wide_n_total_sum[j] = output_RNSint[j] + psum[j];
@@ -60,11 +65,12 @@ module fastBConvSingle #(
     endgenerate
 
     assign out_valid = (current_state==IN_BASIS_LEN);
+    assign n_out_valid = ((current_state+1)==IN_BASIS_LEN);
     // sequential logic / state machine controller
     always_ff @( posedge clk ) begin : MULTICYCLE_REGS
         // if in_valid, start the state counter and latch the computed "a" coefficients
         current_state <= (reset || in_valid) ? '0 : (compute_is_active ? (current_state + 1) : current_state);
-        compute_is_active <= reset ? 0 : (in_valid ? 1 : (out_valid ? 0 : compute_is_active));
+        compute_is_active <= reset ? 0 : (in_valid ? 1 : (n_out_valid ? 0 : compute_is_active));
         //
         // first pipeline stage computes "a" coefs
         a_res <= in_valid ? n_a_res : a_res;
@@ -94,7 +100,11 @@ module fastBConv #(
     output wire out_valid,
     output rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
 );
-
+    // verilog compilation error checking
+    if ((IN_BASIS_LEN==1 && IN_BASIS[0]==0) || (OUT_BASIS_LEN==1 && OUT_BASIS[0]==0) || ZiLUT[0]==0) begin
+        initial $fatal(1,"fastBConv: parameters must be overridden (or you cant pick len=1 and basis[0]=0)");
+    end
+    
     wire [`N_SLOTS-1:0] slot_out_valid;
     
     genvar k;

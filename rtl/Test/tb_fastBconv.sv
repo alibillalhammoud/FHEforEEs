@@ -35,7 +35,7 @@ rns_residue_t input_RNSpoly [`N_SLOTS][IN_BASIS_LEN];
 always #5 clk = ~clk;
 
 //------------------------------------------------------------
-// DUT instance
+// DUT instance, base conversions from q to qBBa
 //------------------------------------------------------------
 fastBConvSingle #(
     .IN_BASIS_LEN (IN_BASIS_LEN),
