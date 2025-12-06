@@ -30,6 +30,10 @@ SYNTH_REP_MULT = $(SYNTH_DIR)/mult.rep
 DUT_MODSWITCH = verilog/modSwitch_qBBa_to_BBa.sv verilog/fastBConv.sv
 TB_MODSWITCH  = test/tb_modSwitch_qBBa_to_BBa.sv
 
+# fastBConvEx  (BBa -> q)
+DUT_FASTBCONVEX = verilog/fastBConvEx_BBa_to_q.sv verilog/fastBConv.sv
+TB_FASTBCONVEX  = test/tb_fastBConvEx_BBa_to_q.sv
+
 # ---- Simulation targets ----
 SIM_CPU    = $(SIMDIR)/simv_cpu
 SIM_RF     = $(SIMDIR)/simv_regfile
@@ -37,6 +41,7 @@ SIM_FASTBCONV = $(SIMDIR)/simv_fastBConv
 SIM_NTT_FULL = $(SIMDIR)/simv_ntt_full
 SIM_NTT_BIG  = $(SIMDIR)/simv_ntt_big
 SIM_MODSWITCH = $(SIMDIR)/simv_modSwitch
+SIM_FASTBCONVEX = $(SIMDIR)/simv_fastBConvEx
 
 # ---- Synthesis TCL / output files ----
 TCL_NTT        = $(SYNTH_DIR)/ntt_butt_synth.tcl
@@ -89,8 +94,11 @@ $(SIM_NTT_BIG): $(DUT_NTT_CORE) $(TB_NTT_BIG)
 $(SIM_MODSWITCH): $(DUT_MODSWITCH) $(TB_MODSWITCH)
 	$(VCS_SIM)
 
+$(SIM_FASTBCONVEX): $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
+	$(VCS_SIM)
+
 # ---- DVE debugger support ----
-.PHONY: dve-cpu dve-regfile dve-fastBConv dve-ntt-full dve-ntt-big dve-modSwitch
+.PHONY: dve-cpu dve-regfile dve-fastBConv dve-ntt-full dve-ntt-big dve-modSwitch dve-fastBConvEx
 
 $(SIMDIR)/dve_cpu: $(DUT_CPU) $(TB_CPU)
 	$(DVE_SIM)
@@ -122,16 +130,22 @@ $(SIMDIR)/dve_modSwitch: $(DUT_MODSWITCH) $(TB_MODSWITCH)
 
 dve-modSwitch: $(SIMDIR)/dve_modSwitch
 
+$(SIMDIR)/dve_fastBConvEx: $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
+	$(DVE_SIM)
+
+dve-fastBConvEx: $(SIMDIR)/dve_fastBConvEx
+
 # ---- Run commands ----
-.PHONY: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch
+.PHONY: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx
 run-regfile: $(SIM_RF); $(SIM_RF)
 run-cpu: $(SIM_CPU); $(SIM_CPU)
 run-fastBConv: $(SIM_FASTBCONV); $(SIM_FASTBCONV)
 run-ntt-full: $(SIM_NTT_FULL); $(SIM_NTT_FULL)
 run-ntt-big: $(SIM_NTT_BIG); $(SIM_NTT_BIG)
 run-modSwitch: $(SIM_MODSWITCH); $(SIM_MODSWITCH)
+run-fastBConvEx: $(SIM_FASTBCONVEX); $(SIM_FASTBCONVEX)
 
-run-all: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch
+run-all: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx
 
 # ---- Synthesis helpers ----
 .PHONY: synth
