@@ -155,7 +155,7 @@ class BFVSchemeServer:
         D0 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D0], dtype=object)
         D1 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D1], dtype=object)
         D2 = np.array([coef.modswitch(drop_modulis=self.config.RNS_basis_q) for coef in D2], dtype=object)
-        # fastBconv from B*Ba to q
+        # fastBconvEx from B*Ba to q
         D0 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D0], dtype=object)
         D1 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D1], dtype=object)
         D2 = np.array([coef.fastBconvEx(aux_modulis_B=self.config.RNS_basis_B, aux_modulis_Ba=self.config.RNS_basis_Ba, target_basis=self.config.RNS_basis_q) for coef in D2], dtype=object)
