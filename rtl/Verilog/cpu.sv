@@ -283,21 +283,21 @@ module cpu (
   assign ntt_2_valid_out = &ntt_2_valid_out_array; 
 
 
-  fastBConv #(
-    .IN_BASIS_LEN (IN_BASIS_LEN),
-    .OUT_BASIS_LEN(OUT_BASIS_LEN),
-    .IN_BASIS (IN_BASIS),
-    .OUT_BASIS (OUT_BASIS),
-    .ZiLUT (ZiLUT),
-    .YMODB (YMODB)
-) dut_POLY (
-    .clk (clk),
-    .reset (reset),
-    .in_valid (in_valid),
-    .input_RNSpoly (input_RNSpoly),
-    .out_valid (out_valid_2),
-    .output_RNSpoly (output_RNSpoly)
-);
+//   fastBConv #(
+//     .IN_BASIS_LEN (`q_BASIS_LEN),
+//     .OUT_BASIS_LEN(`qBBa_BASIS_LEN),
+//     .IN_BASIS (q_BASIS),
+//     .OUT_BASIS (qBBa_BASIS),
+//     .ZiLUT (z_MOD_q),
+//     .YMODB (y_q_TO_qBBa)
+// ) dut_POLY (
+//     .clk (clk),
+//     .reset (reset),
+//     .in_valid (in_valid),
+//     .input_RNSpoly (op_a_q),
+//     .out_valid (out_valid_2),
+//     .output_RNSpoly (output_RNSpoly)
+// );
 
   // ============================
   //  Controller
