@@ -420,6 +420,11 @@ module cpu (
 
       endcase
     end
+
+    OP_CT_CT_MUL: begin
+      case (stage)
+      endcase
+    end
   end
 
 endmodule
