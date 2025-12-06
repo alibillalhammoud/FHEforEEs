@@ -185,6 +185,7 @@ rns_residue_t golden_answer [`N_SLOTS][`q_BASIS_LEN];
 bit           mismatch;
 int unsigned  pass_cnt = 0;
 int unsigned  fail_cnt = 0;
+logic DEBUG_MODE = 0;
 
 initial begin
    // ------------- reset sequence -------------
@@ -215,21 +216,37 @@ initial begin
    @(negedge clk);
    in_valid = 1'b0;
 
+   if (DEBUG_MODE) begin
+      // Display [1][1] and [1][2] for input_RNSpoly and output_RNSpoly
+      $display("[%0t] input_RNSpoly[1][1]=%0d  input_RNSpoly[1][2]=%0d", $time, DUT.input_RNSpoly[1][1], DUT.input_RNSpoly[1][2]);
+      //$monitor("[%0t] output_RNSpoly[1][1]=%0d  output_RNSpoly[1][2]=%0d", $time, DUT.output_RNSpoly[1][1], DUT.output_RNSpoly[1][2]);
+      //$monitor("[%0t] temp[1]=%0d gamma[1]=%0d", $time, DUT.temp[1], DUT.gamma_centered[1]);
+      //$monitor("[%0t] xB_to_q[1][1]=%0d", $time, DUT.xB_in_q[1][1]);
+      //$monitor("[%0t] rr_tmpvar1[1][1]=%0d", $time, DUT.rr_tmpvar1[1][1]);
+      $monitor("[%0t] rr_tmpvar2[1][1]=%0d , rr_tmpvar3[1][1]=%0d", $time, DUT.rr_tmpvar2[1][1], DUT.rr_tmpvar3_mod[1][1]);
+      //$monitor("[%0t] rr_tmpvar3[1][1]=%0d", $time, DUT.rr_tmpvar3_mod[1][1]);
+      // If you want to look inside the DUT at intermediate signals, try (if public in your module):
+      //$monitor("[%0t] DUT.xB_RNSpoly[1][1]=%0d  DUT.xB_RNSpoly[1][2]=%0d", $time, DUT.xB_RNSpoly[1][1], DUT.xB_RNSpoly[1][2]);
+      //$monitor("[%0t] DUT.xB_in_q[1][1]=%0d  DUT.xB_in_q[1][2]=%0d", $time, DUT.xB_in_q[1][1], DUT.xB_in_q[1][2]);
+   end
+   //$display("[%0t] xB_RNSpoly[1][1]=%0d  signed_xBa_RNSpoly[1][0]=%0d", $time, DUT.xB_RNSpoly[1][1], DUT.signed_xBa_RNSpoly[1][0]);
+
+
    // -------------- Wait for result -----------
    while (!out_valid) @(posedge clk);
-   @(posedge clk);   // one more to sample
+   //$display("[%0t] rr_tmpvar2[1][1] mod qbasis[1] = %0d", $time, DUT.rr_tmpvar2[1][1] % q_BASIS[1]);
 
    // -------------- Compare -------------------
    mismatch = 0;
    for (int k = 0; k < `N_SLOTS; k++) begin
       for (int j = 0; j < QLEN; j++) begin
          if (output_RNSpoly[k][j] !== golden_answer[k][j]) begin
-            $display("[%0t]  SLOT %0d  RES %0d  MISMATCH  DUT=%0d  GOLD=%0d",
-                     $time, k, j, output_RNSpoly[k][j], golden_answer[k][j]);
+            $display("[%0t]  SLOT %0d  RES %0d  MISMATCH  DUT=%0d  GOLD=%0d", $time, k, j, output_RNSpoly[k][j], golden_answer[k][j]);
             mismatch = 1;
          end
       end
    end
+   //$display("[%0t] output_RNSpoly[1][1]=%0d  output_RNSpoly[1][2]=%0d", $time, DUT.output_RNSpoly[1][1], DUT.output_RNSpoly[1][2]);
 
    if (mismatch) fail_cnt++; else pass_cnt++;
 

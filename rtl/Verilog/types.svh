@@ -13,7 +13,7 @@
 `define RNS_PRIME_BITS 32
 // RNS residues
 typedef logic [`RNS_PRIME_BITS-1:0] rns_residue_t; 
-typedef logic [(2*`RNS_PRIME_BITS)-1:0] wide_rns_residue_t;
+typedef logic [(2*`RNS_PRIME_BITS):0] wide_rns_residue_t;
 // Vector / slot params
 `define N_SLOTS   64
 // moduli and RNS bases

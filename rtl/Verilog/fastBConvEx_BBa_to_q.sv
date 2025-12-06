@@ -14,9 +14,13 @@ module fastBConvEx_BBa_to_q (
     output reg out_valid,
     output wire rns_residue_t output_RNSpoly [`N_SLOTS][`q_BASIS_LEN] // Value is valid when out_valid is asserted
 );
+    // verilog compilation error check that 
+    if ((`Ba_BASIS_LEN)!=1) begin
+        $fatal(1,"fastBConvEx_BBa_to_q: Ba_BASIS_LEN must be 1");
+    end
     // seperate B residues from Ba residues
     wire rns_residue_t xB_RNSpoly [`N_SLOTS][`B_BASIS_LEN];
-    wire signed [`RNS_PRIME_BITS:0] signed_xBa_RNSpoly [`N_SLOTS][`Ba_BASIS_LEN];
+    reg signed [`RNS_PRIME_BITS:0] signed_xBa_RNSpoly [`N_SLOTS][`Ba_BASIS_LEN]; // logic is below
     genvar k;
     genvar j;
     generate
@@ -24,9 +28,10 @@ module fastBConvEx_BBa_to_q (
             for(j = 0; j < `B_BASIS_LEN; ++j) begin : GETBMODULIS
                 assign xB_RNSpoly[k][j] = input_RNSpoly[k][j];
             end
-            for(j = 0; j < `Ba_BASIS_LEN; ++j) begin : GETBaMODULIS
-                assign signed_xBa_RNSpoly[k][j] = {1'b0, input_RNSpoly[k][j+`B_BASIS_LEN]};
-            end
+            // TODO signed_xBa_RNSpoly should be a register and latch when in_valid
+            //for(j = 0; j < `Ba_BASIS_LEN; ++j) begin : GETBaMODULIS
+            //    assign signed_xBa_RNSpoly[k][j] = {1'b0, input_RNSpoly[k][j+`B_BASIS_LEN]};
+            //end
         end
     endgenerate
     //
@@ -49,7 +54,6 @@ module fastBConvEx_BBa_to_q (
         .output_RNSpoly(xB_in_Ba)
     );
     // create signed version of xB_in_Ba
-    // TODO assert that Ba_BASIS_LEN=1
     logic signed [`RNS_PRIME_BITS:0] signed_xB_in_Ba[`N_SLOTS];
     generate
         for(k = 0; k<`N_SLOTS; ++k) begin
@@ -111,18 +115,26 @@ module fastBConvEx_BBa_to_q (
     // to avoid very long critical path, I add a register for gamma_centered
     // signed_xB_in_q is already in a register (from fast b conv)
     logic signed [`RNS_PRIME_BITS:0] pl_gamma_centered[`N_SLOTS];
+    // will also require the signed version of the q basis
+    logic signed [`RNS_PRIME_BITS:0] local_qBASIS_signed[`q_BASIS_LEN];
+    generate
+        for(j = 0; j<`q_BASIS_LEN; ++j) begin
+            assign local_qBASIS_signed[j] = {1'b0, q_BASIS[j]};
+        end
+    endgenerate
     // result_residues = (xB_to_q - gamma * b_mod_q) % target_basis (q)
-    wire signed [(2*`RNS_PRIME_BITS):0] rr_tmpvar1[`N_SLOTS][`q_BASIS_LEN];
-    wire signed [(2*`RNS_PRIME_BITS):0] rr_tmpvar2[`N_SLOTS][`q_BASIS_LEN];
-    wire signed [(2*`RNS_PRIME_BITS):0] rr_tmpvar3_mod[`N_SLOTS][`q_BASIS_LEN];
+    wire signed [(2*`RNS_PRIME_BITS)+1:0] rr_tmpvar1[`N_SLOTS][`q_BASIS_LEN];
+    wire signed [(2*`RNS_PRIME_BITS)+1:0] rr_tmpvar2[`N_SLOTS][`q_BASIS_LEN];
+    wire signed [`RNS_PRIME_BITS:0] rr_tmpvar3_mod[`N_SLOTS][`q_BASIS_LEN];
     generate
         for(k = 0; k<`N_SLOTS; ++k) begin
             for(j = 0; j<`q_BASIS_LEN; ++j) begin
                 assign rr_tmpvar1[k][j] = pl_gamma_centered[k] * signed_intb_MOD_q[j];
                 assign rr_tmpvar2[k][j] = signed_xB_in_q[k][j] - rr_tmpvar1[k][j];
-                assign rr_tmpvar3_mod[k][j] = rr_tmpvar2[k][j]%q_BASIS[j];
+                // perform modulus operation (truncates to RNS_PRIME_BITS+1 bits)
+                assign rr_tmpvar3_mod[k][j] = rr_tmpvar2[k][j]%local_qBASIS_signed[j];
                 // convert cpp/verilog style mod to an actual math mod, also truncate to residue bits
-                assign output_RNSpoly[k][j] = rr_tmpvar3_mod[k][j][(2*`RNS_PRIME_BITS)-1] ? rr_tmpvar2[k][j]+q_BASIS[j] : rr_tmpvar2[k][j];
+                assign output_RNSpoly[k][j] = rr_tmpvar3_mod[k][j][`RNS_PRIME_BITS] ? rr_tmpvar3_mod[k][j]+local_qBASIS_signed[j] : rr_tmpvar3_mod[k][j];
             end
         end
     endgenerate
@@ -131,10 +143,15 @@ module fastBConvEx_BBa_to_q (
     // for now this works
     logic n_n_out_valid, n_out_valid;
     assign n_n_out_valid = fastBConv_Btoq_outvalid && fastBConv_BtoBa_outvalid;
+    int kn;
     always_ff @( posedge clk ) begin : CTRLANDREGS
         pl_gamma_centered <= gamma_centered;
         n_out_valid <= reset ? 0 : n_n_out_valid;
         out_valid <= reset ? 0 : n_out_valid;
+        // 
+        for(kn=0; kn<`N_SLOTS; ++kn) begin
+            signed_xBa_RNSpoly[kn][0] <= in_valid ? input_RNSpoly[kn][`B_BASIS_LEN] : signed_xBa_RNSpoly[kn][0];
+        end
     end
 
 endmodule
