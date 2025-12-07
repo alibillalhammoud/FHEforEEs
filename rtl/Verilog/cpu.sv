@@ -18,6 +18,7 @@ module cpu (
   logic [$clog2(`REG_NPOLY)-1:0] dest0_register_index_q;
   logic [$clog2(`REG_NPOLY)-1:0] dest1_register_index_q;
   logic [$clog2(`REG_NPOLY)-1:0] wb_0_idx_q, wb_1_idx_q;
+  logic [$clog2(`REG_NPOLY)-1:0] controller_wb_0_idx_q, controller_wb_1_idx_q;
   logic [$clog2(`REG_NPOLY)-1:0] read_idx_0_q, read_idx_1_q, read_idx_2_q, read_idx_3_q;
 
   logic   source0_valid_q, source1_valid_q, source2_valid_q, source3_valid_q;
@@ -37,6 +38,11 @@ module cpu (
   Ba_BASIS_poly  source2_poly_ba, source3_poly_ba;
   Ba_BASIS_poly  dest0_poly_ba,   dest1_poly_ba;
 
+  qBBa_BASIS_poly modSwitch1_in, modSwitch2_in;
+  BBa_BASIS_poly fastBConvEx_in_1, fastBConvEx_in_2;
+
+  logic fastBConvEx_in_valid_1, fastBConvEx_in_valid_2;
+  logic modSwitch_in_valid_1, modSwitch_in_valid_2;
   
   op_e operation_mode, stage1_op_mode;
 
@@ -44,20 +50,22 @@ module cpu (
   // Misc control regs
   // -----------------------------
   logic wb_valid;
-  logic [3:0] stage;   // your CT-PT-MUL micro-FSM state
+  logic [4:0] stage;   // your CT-PT-MUL micro-FSM state
   logic       inverse; // NTT direction flag
   logic     wb_0_q, wb_1_q, done;
 
   logic ntt_1_valid_in, ntt_1_valid_out, ntt_2_valid_in, ntt_2_valid_out;
   logic doing_ntt, doing_fastBconv;
   logic ntt_1_start, ntt_2_start;
-
-
+  logic modSwitch_out_valid_2;
+  logic fast_BConvex_out_valid_1, fast_BConvex_out_valid_2;
+  
   q_BASIS_poly   op_a_q, op_b_q, op_c_q, op_d_q;
   B_BASIS_poly   op_a_b, op_b_b, op_c_b, op_d_b;
   Ba_BASIS_poly  op_a_ba, op_b_ba, op_c_ba, op_d_ba;
 
   q_BASIS_poly  add_out_1, add_out_2, mul_out_1_q, mul_out_2_q, fu_out_1_q, fu_out_2_q, ntt_out_1_q, ntt_out_2_q;
+  q_BASIS_poly  fast_BConvex_out_1, fast_BConvex_out_2;
   B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b, ntt_out_1_b, ntt_out_2_b;
   Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba, ntt_out_1_ba, ntt_out_2_ba;
 
@@ -67,6 +75,8 @@ module cpu (
 
   // Step 1 outputs: mod raise q -> qBBa for each ct component
   qBBa_BASIS_poly fastBconv_out_1, fastBconv_out_2;
+
+  BBa_BASIS_poly modswitch_out_1, modswitch_out_2;
 
   // Step 2/3/4/5: D0,D1,D2 through qBBa -> BBa -> q
   // qBBa_BASIS_poly D0_qBBa, D1_qBBa, D2_qBBa;
@@ -92,6 +102,17 @@ module cpu (
   q_BASIS_poly stage1_src1_q;
   q_BASIS_poly stage1_src2_q;
   q_BASIS_poly stage1_src3_q;
+
+  B_BASIS_poly stage1_src0_b;
+  B_BASIS_poly stage1_src1_b;
+  B_BASIS_poly stage1_src2_b;
+  B_BASIS_poly stage1_src3_b;
+
+  Ba_BASIS_poly stage1_src0_ba;
+  Ba_BASIS_poly stage1_src1_ba;
+  Ba_BASIS_poly stage1_src2_ba;
+  Ba_BASIS_poly stage1_src3_ba;
+
   op_e operationMode, operationMode_next;
   logic [$clog2(`REG_NPOLY)-1:0] stage1_dest0_idx;
   logic [$clog2(`REG_NPOLY)-1:0] stage1_dest1_idx;
@@ -108,10 +129,12 @@ module cpu (
       dest0_register_index_q    = op.out_a;
       dest1_register_index_q    = op.out_b;
     end else begin
-      source0_register_index_q = read_idx_0_q;
-      source1_register_index_q = read_idx_1_q;
-      source2_register_index_q = read_idx_2_q;
-      source3_register_index_q = read_idx_3_q;
+      // source0_register_index_q = read_idx_0_q; 
+      // source1_register_index_q = read_idx_1_q;
+      // source2_register_index_q = read_idx_2_q;
+      // source3_register_index_q = read_idx_3_q;
+      dest0_register_index_q    = controller_wb_0_idx_q;
+      dest1_register_index_q    = controller_wb_1_idx_q;
     end
   end
 
@@ -159,31 +182,25 @@ module cpu (
   ) u_rf_b (
     .clk                 (clk),
 
-    // same logical indices for all bases
     .source0_register_index (source0_register_index_q),
     .source1_register_index (source1_register_index_q),
     .source2_register_index (source2_register_index_q),
     .source3_register_index (source3_register_index_q),
 
-    .dest0_register_index   (dest0_register_index_q),
-    .dest1_register_index   (dest1_register_index_q),
+    .dest0_register_index   (wb_0_idx_q),
+    .dest1_register_index   (wb_1_idx_q),
 
     .source0_valid          (source0_valid_b),
     .source0_poly           (source0_poly_b),
-
     .source1_valid          (source1_valid_b),
     .source1_poly           (source1_poly_b),
-
     .source2_valid          (source2_valid_b),
     .source2_poly           (source2_poly_b),
-
     .source3_valid          (source3_valid_b),
     .source3_poly           (source3_poly_b),
 
-    // write in lockstep with Q bank
-    .dest0_valid            (dest0_valid_q),
+    .dest0_valid            (dest0_valid_q),   // shared WE
     .dest0_poly             (dest0_poly_b),
-
     .dest1_valid            (dest1_valid_q),
     .dest1_poly             (dest1_poly_b)
   );
@@ -199,46 +216,42 @@ module cpu (
     .source2_register_index (source2_register_index_q),
     .source3_register_index (source3_register_index_q),
 
-    .dest0_register_index   (dest0_register_index_q),
-    .dest1_register_index   (dest1_register_index_q),
+    .dest0_register_index   (wb_0_idx_q),
+    .dest1_register_index   (wb_1_idx_q),
 
-    .source0_valid          (/* unused for now */),
+    .source0_valid          (source0_valid_ba),
     .source0_poly           (source0_poly_ba),
-
-    .source1_valid          (/* unused for now */),
+    .source1_valid          (source1_valid_ba),
     .source1_poly           (source1_poly_ba),
-
-    .source2_valid          (/* unused for now */),
+    .source2_valid          (source2_valid_ba),
     .source2_poly           (source2_poly_ba),
-
-    .source3_valid          (/* unused for now */),
+    .source3_valid          (source3_valid_ba),
     .source3_poly           (source3_poly_ba),
 
     .dest0_valid            (dest0_valid_q),
     .dest0_poly             (dest0_poly_ba),
-
     .dest1_valid            (dest1_valid_q),
     .dest1_poly             (dest1_poly_ba)
   );
-
-
 
   // ============================
   //  STAGE 1: Register Access
   // ============================
   always_ff @(posedge clk) begin
     $display("Stage: %d, Operation: %d, Done: %b",stage, operation_mode, done_out);
+    // $display("%b, %b, %b, %b, %b, %b", done, stage1_op_mode, ntt_1_valid_in, ntt_1_valid_out, fastBconv_in_valid, fastbconv_out_1_valid);
     $display("Op_a: %d, Op_b: %d, Op_c: %d, Op_d: %d", op_a_q[0][0], op_b_q[0][0], op_c_q[0][0], op_d_q[0][0]);
     $display("Fu_1: %d, Fu_2: %d", fu_out_1_q[0][0], fu_out_2_q[0][0]);
     $display("Dest0_poly: %d, Dest1_poly: %d", dest0_poly_q[0][0], dest1_poly_q[0][0]);
     $display("Wb_0_idx: %d, Wb_1_idx: %d", wb_0_idx_q, wb_1_idx_q);
-    $display("Mem5: %d, Mem6: %d", u_rf_q.mem[5][0][0], u_rf_q.mem[6][0][0]);
-    $display("Read0_poly: %d, Read1_poly: %d", source0_poly_q[0][0], source1_poly_q[0][0]);
-    $display("Read_0_idx: %d, Read_1_idx: %d", read_idx_0_q, read_idx_1_q);
-    $display("NTT_1_Valid: %b, NTT_2_Valid: %b", ntt_1_valid_out, ntt_2_valid_out);
-    $display("NTT_1_Valid_in: %b, NTT_2_Valid_in: %b", ntt_1_valid_in, ntt_2_valid_in);
-    $display("fastbconv valid in: %b, doing_fastBconv: %b", fastBconv_in_valid, doing_fastBconv);
-    $display("fastbconv1 valid out: %b, fastbconv2 valid out: %b ", fastbconv_out_1_valid, modraise_out_2_valid);
+    // $display("Mem11: %d, Mem12: %d", u_rf_q.mem[11][0][0], u_rf_q.mem[12][0][0]);
+    // $display("Mem0: %d, Mem1: %d", u_rf_q.mem[0][0][0], u_rf_q.mem[1][0][0]);
+    // $display("Read0_poly: %d, Read1_poly: %d", source0_poly_q[0][0], source1_poly_q[0][0]);
+    // $display("Read_0_idx: %d, Read_1_idx: %d", read_idx_0_q, read_idx_1_q);
+    // $display("NTT_1_Valid: %b, NTT_2_Valid: %b", ntt_1_valid_out, ntt_2_valid_out);
+    // $display("NTT_1_Valid_in: %b, NTT_2_Valid_in: %b", ntt_1_valid_in, ntt_2_valid_in);
+    // $display("fastbconv valid in: %b, doing_fastBconv: %b", fastBconv_in_valid, doing_fastBconv);
+    // $display("fastbconv1 valid out: %b, fastbconv2 valid out: %b ", fastbconv_out_1_valid, modraise_out_2_valid);
 
     if (reset) begin
       dest0_valid_q     <= 1'b0;
@@ -253,6 +266,10 @@ module cpu (
       stage1_dest1_idx  <= '0;
       dest0_poly_q      <= '{default: '0};
       dest1_poly_q      <= '{default: '0};
+      dest0_poly_b      <= '{default: '0};   
+      dest1_poly_b      <= '{default: '0};   
+      dest0_poly_ba     <= '{default: '0};   
+      dest1_poly_ba     <= '{default: '0};   
       done_out          <= '0;
       stage             <= '0;
     end else begin
@@ -260,8 +277,14 @@ module cpu (
       stage1_valid      <= source0_valid_q & source1_valid_q;
       stage1_src0_q     <= source0_poly_q;
       stage1_src1_q     <= source1_poly_q;
+      stage1_src1_b     <= source1_poly_b;
+      stage1_src1_ba     <= source1_poly_ba;
       stage1_src2_q     <= source2_poly_q;
+      stage1_src2_b     <= source2_poly_b;
+      stage1_src2_ba    <= source2_poly_ba;
       stage1_src3_q     <= source3_poly_q;
+      stage1_src3_b     <= source3_poly_b;
+      stage1_src3_ba     <= source3_poly_ba;
       stage1_op_mode    <= (done || stage1_op_mode == NO_OP) ? operation_mode : stage1_op_mode;
       stage1_dest0_idx  <= (done || stage1_op_mode == NO_OP) ? dest0_register_index_q : stage1_dest0_idx;
       stage1_dest1_idx  <= (done || stage1_op_mode == NO_OP) ? dest1_register_index_q : stage1_dest1_idx;
@@ -269,36 +292,19 @@ module cpu (
       dest1_valid_q     <= wb_1_q;
       dest0_poly_q      <= fu_out_1_q;
       dest1_poly_q      <= fu_out_2_q;
+      dest0_poly_b      <= fu_out_1_b;
+      dest1_poly_b      <= fu_out_2_b;
+      dest0_poly_ba     <= fu_out_1_ba;
+      dest1_poly_ba     <= fu_out_2_ba;
       done_out          <= done; 
-      doing_ntt <= (stage1_op_mode == OP_CT_PT_MUL) &&  (stage == 4'b0010 || stage == 4'b0111 || stage == 4'b0100 || stage == 4'b1001);
-      doing_fastBconv <= (stage1_op_mode == OP_CT_CT_MUL) && (stage == 4'b0001 || stage == 4'b0010);
-      stage             <= (done || stage1_op_mode == NO_OP) ? 4'b0 : ((ntt_1_valid_in & ~ntt_1_valid_out) || (fastBconv_in_valid & ~fastbconv_out_1_valid)) ? stage : stage + 1;
+      doing_ntt <= (stage1_op_mode == OP_CT_PT_MUL) && (stage == 5'b00010 || stage == 5'b00111 || stage == 5'b00100 || stage == 5'b01001);
+      // doing_fastBconv <= (stage1_op_mode == OP_CT_CT_MUL) && (stage == 5'b00001 || stage == 5'b00010);
+      stage             <= (done || stage1_op_mode == NO_OP) ? 5'b00001 : ((ntt_1_valid_in & ~ntt_1_valid_out) || (fastBconv_in_valid & ~fastbconv_out_1_valid)) ? stage : stage + 1;
+      wb_0_idx_q <= (controller_wb_0_idx_q);
+      wb_1_idx_q <= (controller_wb_1_idx_q);
       // when operation_mode != No_OP, stage = 0
     end
   end
-
-  // always_ff @(posedge clk or posedge reset) begin
-  //   if (reset) begin
-  //     ntt_1_start <= 1'b0;
-  //     ntt_2_start <= 1'b0;
-  //   end else begin
-  //     // default: low every cycle
-  //     ntt_1_start <= 1'b0;
-  //     ntt_2_start <= 1'b0;
-
-  //     // start NTT for CT1.A and PT (forward NTT step)
-  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0010 &&  !ntt_1_valid_out) begin
-  //       ntt_1_start <= 1'b1;
-  //       ntt_2_start <= 1'b1;
-  //     end
-
-  //     // start NTT for CT1.B and PT (forward NTT step for B)
-  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0111 &&  !ntt_1_valid_out) begin
-  //       ntt_1_start <= 1'b1;
-  //       ntt_2_start <= 1'b1;
-  //     end
-  //   end
-  // end
 
   // ============================
   //  Functional Units
@@ -453,7 +459,8 @@ module cpu (
         .reset        (reset),
         .in_valid     (fastBconv_in_valid & ~doing_fastBconv),
         .input_RNSpoly(op_a_q),           // ct1.B in q basis
-        .out_valid    (fastbconv_out_1_valid),
+        .doing_fastBconv    (doing_fastBconv),
+        .out_valid (fastbconv_out_1_valid),
         .output_RNSpoly(fastBconv_out_1)
   );
 
@@ -473,25 +480,81 @@ module cpu (
         .output_RNSpoly(fastBconv_out_2)
   );
 
-  //   // D0
-  // modSwitch_qBBa_to_BBa qBBatoBBaMODSWITCH_D0 (
-  //     .clk            (clk),
-  //     .reset          (reset),
-  //     .in_valid       (ms_D0_in_valid),   // driven by controller
-  //     .input_RNSpoly  (D0_qBBa),          // D0 in qBBa basis
-  //     .out_valid      (ms_D0_out_valid),
-  //     .output_RNSpoly (D0_BBa)            // D0 in BBa basis
-  // );
+    // D0
 
-  // // D0
-  // fastBConvEx_BBa_to_q BBatoqFASTBCONVEX_D0 (
-  //     .clk            (clk),
-  //     .reset          (reset),
-  //     .in_valid       (fbex_D0_in_valid), // driven by controller
-  //     .input_RNSpoly  (D0_BBa),           // D0 in BBa basis
-  //     .out_valid      (fbex_D0_out_valid),
-  //     .output_RNSpoly (D0_q)              // D0 back in q basis
-  // );
+    always_comb begin
+      for (int i = 0; i < `N_SLOTS; i++) begin
+
+        for (int j = 0; j < `q_BASIS_LEN; j++) begin
+          modSwitch1_in[i][j] = op_a_q[i][j];
+          modSwitch2_in[i][j] = op_c_q[i][j];
+        end
+
+        for (int j = 0; j < `B_BASIS_LEN; j++) begin
+          modSwitch1_in[i][j + `q_BASIS_LEN] = op_a_b[i][j];
+          modSwitch2_in[i][j + `q_BASIS_LEN] = op_c_b[i][j];
+        end
+
+        for (int j = 0; j < `Ba_BASIS_LEN; j++) begin
+          modSwitch1_in[i][j + `q_BASIS_LEN + `B_BASIS_LEN] = op_a_ba[i][j];
+          modSwitch2_in[i][j + `q_BASIS_LEN + `B_BASIS_LEN] = op_c_ba[i][j];
+        end
+      end
+    end
+
+  modSwitch_qBBa_to_BBa modSwitch1 (
+      .clk            (clk),
+      .reset          (reset),
+      .in_valid       (modSwitch_in_valid_1),   // driven by controller
+      .input_RNSpoly  (modSwitch1_in),          // D0 in qBBa basis
+      .out_valid      (modSwitch_out_valid_1),
+      .output_RNSpoly (modswitch_out_1)            // D0 in BBa basis
+  );
+
+  modSwitch_qBBa_to_BBa modSwitch2 (
+      .clk            (clk),
+      .reset          (reset),
+      .in_valid       (modSwitch_in_valid_2),   // driven by controller
+      .input_RNSpoly  (modSwitch2_in),          // D0 in qBBa basis
+      .out_valid      (modSwitch_out_valid_2),
+      .output_RNSpoly (modswitch_out_2)            // D0 in BBa basis
+  );
+
+  always_comb begin
+      for (int i = 0; i < `N_SLOTS; i++) begin
+
+        for (int j = 0; j < `B_BASIS_LEN; j++) begin
+          fastBConvEx_in_1[i][j] = op_a_b[i][j];
+          fastBConvEx_in_2[i][j + `q_BASIS_LEN] = op_c_b[i][j];
+        end
+
+        for (int j = 0; j < `Ba_BASIS_LEN; j++) begin
+          fastBConvEx_in_1[i][j + `B_BASIS_LEN] = op_a_ba[i][j];
+          fastBConvEx_in_2[i][j + `B_BASIS_LEN] = op_c_ba[i][j];
+        end
+      end
+    end
+
+  // D0
+  fastBConvEx_BBa_to_q fastBConvEX_1 (
+      .clk            (clk),
+      .reset          (reset),
+      .in_valid       (fastBConvEx_in_valid_1), // driven by controller
+      .input_RNSpoly  (fastBConvEx_in_1),           // D0 in BBa basis
+      .out_valid      (fast_BConvex_out_valid_1),
+      // .doing_fastBConvEx (doing_fastBConvEx),
+      .output_RNSpoly (fast_BConvex_out_1)              // D0 back in q basis
+  );
+
+  fastBConvEx_BBa_to_q fastBConvEX_2 (
+      .clk            (clk),
+      .reset          (reset),
+      .in_valid       (fastBConvEx_in_valid_2), // driven by controller
+      .input_RNSpoly  (fastBConvEx_in_1),           // D0 in BBa basis
+      .out_valid      (fast_BConvex_out_valid_2),
+      // .doing_fastBConvEx (doing_fastBConvEx),
+      .output_RNSpoly (fast_BConvex_out_2)              // D0 back in q basis
+  );
 
   // ============================
   //  Controller
@@ -507,10 +570,16 @@ module cpu (
     wb_1_q     = 1'b0;
     done       = 1'b0;
     inverse    = 1'b0;
-    read_idx_0_q = 1'b0;
-    read_idx_1_q = 1'b0;
-    wb_0_idx_q = '0;
-    wb_1_idx_q = '0;
+    controller_wb_0_idx_q = stage1_dest0_idx;
+    controller_wb_1_idx_q = stage1_dest1_idx;
+    fastBConvEx_in_valid_2 = 1'b0;
+    fastBConvEx_in_valid_1 = 1'b0;
+    modSwitch_in_valid_1 = 1'b0;
+    modSwitch_in_valid_2 = 1'b0;
+    read_idx_0_q = '0;
+    read_idx_1_q = '0;
+    read_idx_2_q = '0;
+    read_idx_3_q = '0;
     fastBconv_in_valid = 1'b0;
     
 
@@ -534,8 +603,8 @@ module cpu (
           fu_out_2_q = add_out_2;      // sum for B
           wb_0_q     = 1;
           wb_1_q     = 1;
-          wb_0_idx_q = stage1_dest0_idx;
-          wb_1_idx_q = stage1_dest1_idx;
+          controller_wb_0_idx_q = stage1_dest0_idx;
+          controller_wb_1_idx_q = stage1_dest1_idx;
           done       = 1;
         end
 
@@ -548,8 +617,8 @@ module cpu (
           fu_out_2_q = add_out_2;
           wb_0_q     = 1;
           wb_1_q     = 1;
-          wb_0_idx_q = stage1_dest0_idx;
-          wb_1_idx_q = stage1_dest1_idx;
+          controller_wb_0_idx_q = stage1_dest0_idx;
+          controller_wb_1_idx_q = stage1_dest1_idx;
           done       = 1;
         end
 
@@ -557,7 +626,7 @@ module cpu (
           case (stage)
             // CT1.A * Plaintext
             // TWIST
-            4'b0001: begin
+            5'b00001: begin
               op_a_q     = stage1_src0_q;       // CT1.A (vec)
               op_b_q     = twist_factor_q;
               op_c_q     = stage1_src3_q;       // PT (vec)
@@ -567,7 +636,7 @@ module cpu (
             end
 
             // NTT of CT1.A and PT
-            4'b0010: begin
+            5'b00010: begin
               inverse    = 1'b0;
               op_a_q     = dest0_poly_q;        // CT1.A * twist
               op_c_q     = dest1_poly_q;        // PT * twist
@@ -579,14 +648,14 @@ module cpu (
             end
 
             // MUL in NTT domain (A part)
-            4'b0011: begin
+            5'b00011: begin
               op_a_q     = dest0_poly_q;        // NTT(CT1.A * twist)
               op_b_q     = dest1_poly_q;        // NTT(PT * twist)
               fu_out_1_q = mul_out_1_q;         // CT1.A * PT
             end
 
             // Inverse NTT (A)
-            4'b0100: begin
+            5'b00100: begin
               inverse    = 1'b1;
               op_a_q     = dest0_poly_q;
               fu_out_1_q = ntt_out_1_q;
@@ -594,16 +663,16 @@ module cpu (
             end
 
             // Untwist (A)
-            4'b0101: begin
+            5'b00101: begin
               op_a_q     = dest0_poly_q;
               op_b_q     = untwist_factor_q;
               fu_out_1_q = mul_out_1_q;
               wb_0_q     = 1;
-              wb_0_idx_q = dest0_register_index_q;
+              controller_wb_0_idx_q = stage1_dest0_idx;
             end
 
             // CT1.B * Plaintext — twist
-            4'b0110: begin
+            5'b00110: begin
               op_a_q     = stage1_src1_q;       // CT1.B
               op_b_q     = twist_factor_q;
               op_c_q     = stage1_src3_q;       // PT
@@ -613,7 +682,7 @@ module cpu (
             end
 
             // NTT (B path)
-            4'b0111: begin
+            5'b00111: begin
               inverse    = 1'b0;
               op_a_q     = dest0_poly_q;
               op_c_q     = dest1_poly_q;
@@ -625,14 +694,14 @@ module cpu (
             end
 
             // MUL in NTT domain (B part)
-            4'b1000: begin
+            5'b01000: begin
               op_a_q     = dest0_poly_q;
               op_b_q     = dest1_poly_q;
               fu_out_1_q = mul_out_1_q;
             end
 
             // Inverse NTT (B)
-            4'b1001: begin
+            5'b01001: begin
               inverse    = 1'b1;
               op_a_q     = dest0_poly_q;
               fu_out_1_q = ntt_out_1_q;
@@ -641,12 +710,12 @@ module cpu (
             end
 
             // Untwist (B)
-            4'b1010: begin
+            5'b01010: begin
               op_a_q     = dest0_poly_q;
               op_b_q     = untwist_factor_q;
               fu_out_2_q = mul_out_1_q;
               wb_1_q     = 1;
-              wb_1_idx_q = dest1_register_index_q;
+              controller_wb_1_idx_q = stage1_dest1_idx;
               done       = 1;
             end
           endcase
@@ -654,7 +723,7 @@ module cpu (
 
         OP_CT_CT_MUL: begin
           case (stage)
-            4'b0001: begin
+            5'b00001: begin
             fastBconv_in_valid = 1'b1;  // A1 -> qBBa
               op_a_q = stage1_src0_q; //CT1.A
               op_c_q = stage1_src1_q; //CT1.B
@@ -662,8 +731,8 @@ module cpu (
               // Store values in reg 11 and 12
               wb_0_q = 1'b1;
               wb_1_q = 1'b1;
-              wb_0_idx_q = `REG_NPOLY'd11;
-              wb_1_idx_q = `REG_NPOLY'd12;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
 
               for (int i = 0; i < `N_SLOTS; i++) begin
                 for (int j = 0; j < `q_BASIS_LEN; j++) begin
@@ -687,7 +756,7 @@ module cpu (
               end
             end
             
-            4'b0010: begin
+            5'b00010: begin
               fastBconv_in_valid = 1'b1;
               op_a_q = stage1_src2_q; //CT2.A
               op_c_q = stage1_src3_q; //CT2.B
@@ -714,97 +783,386 @@ module cpu (
               end
             end
 
-            4'b0011: begin
+            5'b00011: begin
               // Twist CT2
               op_a_q     = dest0_poly_q;      // CT2.A
+              op_a_b     = dest0_poly_b;      // CT2.A
+              op_a_ba     = dest0_poly_ba;      // CT2.A
               op_b_q     = twist_factor_q;
+              op_b_b     = twist_factor_b;
+              op_b_ba     = twist_factor_ba;
               op_c_q     = dest1_poly_q;      // CT2.B
+              op_c_b     = dest1_poly_b;      // CT2.B
+              op_c_ba     = dest1_poly_ba;      // CT2.B
               op_d_q     = twist_factor_q;
+              op_d_b     = twist_factor_b;
+              op_d_ba     = twist_factor_ba;
               fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
               fu_out_2_q = mul_out_2_q;
+              fu_out_2_ba = mul_out_2_ba;
 
               // For next cycle, read registers 11 and 12
               read_idx_0_q = `REG_NPOLY'd11;
               read_idx_1_q = `REG_NPOLY'd12;
             end
 
-            4'b0100: begin
+            5'b00100: begin
               // Twist CT1
               op_a_q     = stage1_src0_q;      // CT1.A
+              op_a_b     = stage1_src0_b;      // CT1.A
+              op_a_ba     = stage1_src0_ba;      // CT1.A
               op_b_q     = twist_factor_q;
+              op_b_b     = twist_factor_b;
+              op_b_ba     = twist_factor_ba;
               op_c_q     = stage1_src1_q;      // CT1.B
+              op_c_b     = stage1_src1_b;      // CT1.B
+              op_c_ba     = stage1_src1_ba;      // CT1.B
               op_d_q     = twist_factor_q;
+              op_d_b     = twist_factor_b;
+              op_d_ba     = twist_factor_ba;
               fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
               fu_out_2_q = mul_out_2_q;
+              fu_out_2_ba = mul_out_2_ba;
             end
 
-            4'b0101: begin
+            5'b00101: begin
               // NTT CT1
               inverse    = 1'b0;
               op_a_q     = dest0_poly_q;        // CT1.A * twist
+              op_a_b     = dest0_poly_b;        // CT1.A * twist
+              op_a_ba     = dest0_poly_ba;        // CT1.A * twist
               op_c_q     = dest1_poly_q;        // CT1.B * twist
+              op_c_b     = dest1_poly_b;        // CT1.B * twist
+              op_c_ba     = dest1_poly_ba;        // CT1.B * twist
               fu_out_1_q = ntt_out_1_q;
+              fu_out_1_b = ntt_out_1_b;
+              fu_out_1_ba = ntt_out_1_ba;
               fu_out_2_q = ntt_out_2_q;
+              fu_out_2_b = ntt_out_2_b;
+              fu_out_2_ba = ntt_out_2_ba;
               ntt_1_valid_in = 1'b1;
               ntt_2_valid_in = 1'b1;
 
               // Store values in reg 11 and 12
               wb_0_q = 1'b1;
               wb_1_q = 1'b1;
-              wb_0_idx_q = `REG_NPOLY'd11;
-              wb_1_idx_q = `REG_NPOLY'd12;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
 
               // For next cycle, read registers dest0 and dest1
               read_idx_0_q = `REG_NPOLY'd11;
               read_idx_1_q = `REG_NPOLY'd11;
             end
 
-            4'b0110: begin
+            5'b00110: begin
               // NTT CT2
               inverse    = 1'b0;
               op_a_q     = stage1_src2_q;        // CT2.A * twist
+              op_a_b     = stage1_src2_b;        // CT2.A * twist
+              op_a_ba     = stage1_src2_ba;        // CT2.A * twist
               op_c_q     = stage1_src3_q;        // CT2.B * twist
+              op_c_b     = stage1_src3_b;        // CT2.B * twist
+              op_c_ba     = stage1_src3_ba;        // CT2.B * twist
               fu_out_1_q = ntt_out_1_q;
+              fu_out_1_b = ntt_out_1_b;
+              fu_out_1_ba = ntt_out_1_ba;
               fu_out_2_q = ntt_out_2_q;
+              fu_out_2_b = ntt_out_2_b;
+              fu_out_2_ba = ntt_out_2_ba;
               ntt_1_valid_in = 1'b1;
               ntt_2_valid_in = 1'b1;
             end
 
-            4'b0111: begin
+            5'b00111: begin
               // MUL B2 * A1 & B1 * A2
               op_a_q     = stage1_src0_q;     // CT1.A
+              op_a_b     = stage1_src0_b;     // CT1.A
+              op_a_ba     = stage1_src0_ba;     // CT1.A
               op_b_q     = stage1_src3_q;     // CT2.B
+              op_b_b     = stage1_src3_b;     // CT2.B
+              op_b_ba     = stage1_src3_ba;     // CT2.B
               op_c_q     = stage1_src1_q;     // CT1.B
+              op_c_b     = stage1_src1_b;     // CT1.B
+              op_c_ba     = stage1_src1_ba;     // CT1.B
               op_d_q     = stage1_src2_q;     // CT2.A
+              op_d_b     = stage1_src2_b;     // CT2.A
+              op_d_ba     = stage1_src2_ba;     // CT2.A
               fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
               fu_out_2_q = mul_out_2_q;
+              fu_out_2_ba = mul_out_2_ba;
 
               // Store values in reg 11 and 12
               wb_0_q = 1'b1;
               wb_1_q = 1'b1;
-              wb_0_idx_q = `REG_NPOLY'd11;
-              wb_1_idx_q = `REG_NPOLY'd12;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
             end
 
-            4'b1000: begin
+            5'b01000: begin
               // MUL B1 * B2 & A1 * A2
               op_a_q     = stage1_src1_q;     // CT1.B
+              op_a_b     = stage1_src1_b;     // CT1.B
+              op_a_ba     = stage1_src1_ba;     // CT1.B
               op_b_q     = stage1_src3_q;     // CT2.B
-              op_c_q     = stage1_src0_q;     // CT1.A
+              op_b_b     = stage1_src3_b;     // CT2.B
+              op_b_ba     = stage1_src3_ba;     // CT2.B
+              op_c_q     = stage1_src1_q;     // CT1.A
+              op_c_b     = stage1_src1_b;     // CT1.B
+              op_c_ba     = stage1_src1_ba;     // CT1.B
               op_d_q     = stage1_src2_q;     // CT2.A
               fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
               fu_out_2_q = mul_out_2_q;
-              done = 1;
+              fu_out_2_b = mul_out_2_b;
+              fu_out_2_ba = mul_out_2_ba;
             end
 
-            4'b1001: begin
-              // MUL B1 * B2 & A1 * A2
-              op_a_q     = stage1_src1_q;     // CT1.B
-              op_b_q     = stage1_src3_q;     // CT2.B
-              op_c_q     = stage1_src0_q;     // CT1.A
-              op_d_q     = stage1_src2_q;     // CT2.A
+            5'b01001: begin
+              // Inverse NTT: B1 * B2 & A1 * A2
+              inverse    = 1'b1;
+              op_a_q     = dest0_poly_q;
+              op_a_b     = dest0_poly_b;
+              op_a_ba     = dest0_poly_ba;
+              op_c_q     = dest1_poly_q;
+              op_c_b     = dest1_poly_b;
+              op_c_ba     = dest1_poly_ba;
+              fu_out_1_q = ntt_out_1_q;
+              fu_out_1_b = ntt_out_1_b;
+              fu_out_1_ba = ntt_out_1_ba;
+              fu_out_2_q = ntt_out_2_q;
+              fu_out_2_b = ntt_out_2_b;
+              fu_out_2_ba = ntt_out_2_ba;
+              ntt_1_valid_in = 1'b1;
+              ntt_2_valid_in = 1'b1;
+
+              // Store values in reg 11 and 12
+              wb_0_q = 1'b1;
+              wb_1_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
+            end
+
+            5'b01010: begin
+              // Inverse NTT: B2 * A1 & B1 * A2
+              inverse    = 1'b1;
+              op_a_q     = stage1_src0_q;    
+              op_a_b     = stage1_src0_b;   
+              op_a_ba    = stage1_src0_ba;    
+              op_c_q     = stage1_src1_q;
+              op_c_b     = stage1_src1_b;
+              op_c_ba     = stage1_src1_ba;
+              fu_out_1_q = ntt_out_1_q;
+              fu_out_1_b = ntt_out_1_b;
+              fu_out_1_ba = ntt_out_1_ba;
+              fu_out_2_q = ntt_out_2_q;
+              fu_out_2_b = ntt_out_2_b;
+              fu_out_2_ba = ntt_out_2_ba;
+              ntt_1_valid_in = 1'b1;
+              ntt_2_valid_in = 1'b1;
+            end
+
+            5'b01011: begin
+              // Untwist: D0 = B2 * A1 & D2 = B1 * A2
+              op_a_b     = dest0_poly_b;      
+              op_a_ba     = dest0_poly_ba;    
+              op_b_q     = untwist_factor_q;
+              op_b_b     = untwist_factor_b;
+              op_b_ba     = untwist_factor_ba;
+              op_c_q     = dest1_poly_q;     
+              op_c_b     = dest1_poly_b;   
+              op_c_ba     = dest1_poly_ba;   
+              op_d_q     = untwist_factor_q;
+              op_d_b     = untwist_factor_b;
+              op_d_ba     = untwist_factor_ba;
               fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
               fu_out_2_q = mul_out_2_q;
+              fu_out_2_b = mul_out_2_b;
+              fu_out_2_ba = mul_out_2_ba;
+
+              // Store values in reg 11 and 12
+              wb_0_q = 1'b1;
+              wb_1_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
+            end
+
+            5'b01100: begin
+              // Untwist B1 * B2 & A1 * A2
+              op_a_q     = stage1_src0_q;    
+              op_a_b     = stage1_src0_b;    
+              op_a_ba     = stage1_src0_ba;     
+              op_b_q     = untwist_factor_q;   
+              op_b_b     = untwist_factor_b;   
+              op_b_ba     = untwist_factor_ba;    
+              op_c_q     = stage1_src2_q;  
+              op_c_b     = stage1_src2_b;  
+              op_c_ba     = stage1_src2_ba;     
+              op_d_q     = untwist_factor_q;   
+              op_d_b     = untwist_factor_b;   
+              op_d_ba     = untwist_factor_ba;   
+              fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
+              fu_out_2_q = mul_out_2_q;
+              fu_out_2_b = mul_out_2_b;
+              fu_out_2_ba = mul_out_2_ba;
+            end
+
+            5'b01101: begin
+              // Add D1 = B1 * B2 & A1 * A2
+              op_a_q     = dest0_poly_q;     
+              op_b_q     = dest1_poly_q;    
+              fu_out_1_q = add_out_1;
+            end
+
+            5'b01110: begin
+              // Add B1 * B2 & A1 * A2
+              op_a_q     = dest0_poly_q;     
+              op_b_q     = dest1_poly_q;    
+              fu_out_1_q = add_out_1;
+
+              // Store values in reg 10
+              wb_0_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+
+              /*
+              Reg 10 - D1
+              Reg 11 - D0
+              Reg 12 - D2
+              */
+            end
+
+            5'b01111: begin
+              // Multiply D0 and D1 with t
+              op_a_q     = stage1_src0_q;   //D0 
+              op_a_b     = stage1_src0_b;   //D0 
+              op_a_ba     = stage1_src0_ba;   //D0 
+              // op_b_q     = `t_MODULUS;    
+              // op_b_b     = `t_MODULUS;    
+              // op_b_ba     = `t_MODULUS;    
+              op_c_q     = stage1_src1_q;   //D1  
+              op_c_b     = stage1_src1_b;   //D1  
+              op_c_ba     = stage1_src1_ba;   //D1  
+              // op_d_q     = `t_MODULUS;  
+              // op_d_b     = `t_MODULUS;  
+              // op_d_ba     = `t_MODULUS;    
+              fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
+              fu_out_2_q = mul_out_2_q;
+              fu_out_2_b = mul_out_2_b;
+              fu_out_2_ba = mul_out_2_ba;
+
+              // Store values in reg 10 and 11
+              wb_0_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              wb_1_q = 1'b1;
+              controller_wb_1_idx_q = `REG_NPOLY'd10;
+            end
+
+            5'b10000: begin
+              // Multiply D2 with t
+              op_a_q     = stage1_src0_q;   //D2
+              op_a_b     = stage1_src0_b;   //D2
+              op_a_ba     = stage1_src0_ba;   //D2 
+
+              // op_b_q     = `t_MODULUS;    
+              // op_b_b     = `t_MODULUS;    
+              // op_b_ba     = `t_MODULUS;  
+               
+              fu_out_1_q = mul_out_1_q;
+              fu_out_1_b = mul_out_1_b;
+              fu_out_1_ba = mul_out_1_ba;
+
+              // Mod Switch D0 
+              op_c_q     = stage1_src1_q;   //D0
+              op_c_b     = stage1_src1_b;   //D0
+              op_c_ba    = stage1_src1_ba;   //D0
+              
+              modSwitch_in_valid_2 = 1'b1;
+
+              // op_d_q     = `t_MODULUS;   
+              // op_d_b     = `t_MODULUS;   
+              // op_d_ba    = `t_MODULUS;  
+
+              for (int i = 0; i < `N_SLOTS; i++) begin
+                for (int j = 0; j < `B_BASIS_LEN; j++) begin
+                  fu_out_2_b[i][j] = modswitch_out_2[i][j];
+                end
+              end
+
+              for (int i = 0; i < `N_SLOTS; i++) begin
+                for (int j = 0; j < `Ba_BASIS_LEN; j++) begin
+                  fu_out_2_ba[i][j] = modswitch_out_2[i][`B_BASIS_LEN + j];
+                end
+              end
+              
+              // Store values in reg 12 and 11
+              wb_0_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd12;
+              wb_1_q = 1'b1;
+              controller_wb_1_idx_q = `REG_NPOLY'd11;
+            end
+
+            5'b10001: begin
+              // Mod Switch D1
+              op_a_q     = stage1_src0_q;   //D1  
+              op_a_b     = stage1_src0_b;   //D1  
+              op_a_ba     = stage1_src0_ba;   //D1 
+              modSwitch_in_valid_1 = 1'b1;
+
+              // Mod Switch D2
+              op_c_q     = stage1_src1_q;   //D2
+              op_c_b     = stage1_src1_b;   //D2
+              op_c_ba     = stage1_src1_ba;   //D2
+              modSwitch_in_valid_2 = 1'b1;
+
+              for (int i = 0; i < `N_SLOTS; i++) begin
+                for (int j = 0; j < `B_BASIS_LEN; j++) begin
+                  fu_out_1_b[i][j] = modswitch_out_1[i][j];
+                  fu_out_2_b[i][j] = modswitch_out_2[i][j];
+                end
+              end
+
+              for (int i = 0; i < `N_SLOTS; i++) begin
+                for (int j = 0; j < `Ba_BASIS_LEN; j++) begin
+                  fu_out_1_ba[i][j] = modswitch_out_1[i][`B_BASIS_LEN + j];
+                  fu_out_2_ba[i][j] = modswitch_out_2[i][`B_BASIS_LEN + j];
+                end
+              end
+              
+              // Store values in reg 12 and 11
+              wb_0_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd10;
+              wb_1_q = 1'b1;
+              controller_wb_1_idx_q = `REG_NPOLY'd12;
+            end
+
+            5'b10010: begin
+              // FastBConvEx D0
+              op_a_b     = stage1_src0_b;   //D0  
+              op_a_ba     = stage1_src0_ba;   //D0  
+              fu_out_1_q = fast_BConvex_out_1;
+              fastBConvEx_in_valid_1 = 1'b1;
+              // FastBConvEx
+              op_c_b      = stage1_src1_b;   //D1
+              op_c_ba     = stage1_src1_ba;   //D1
+              fu_out_1_q = fast_BConvex_out_2; 
+              fastBConvEx_in_valid_2 = 1'b1;
+              
+              wb_0_q = 1'b1;
+              controller_wb_0_idx_q = `REG_NPOLY'd11;
+              wb_1_q = 1'b1;
+              controller_wb_1_idx_q = `REG_NPOLY'd10;
               done = 1;
             end
 
@@ -816,62 +1174,3 @@ module cpu (
 
 
 endmodule
-
-
-/* For references:
-
-- 1: perform mod raise from q-> qBBa (use the fastBconv block "conv_inst_MODRAISE")
-    - do this for each polynomial in ct1.a ct1.b ct2.a ct2.b
-- 2: do this: 
-      D0 = self.polynomial_mul(B1,B2)
-      D1 = self.polynomial_mul(B2,A1) + self.polynomial_mul(B1,A2)
-      D2 = self.polynomial_mul(A1,A2)
--3: multiply everything by `t_MODULUS (a single integer scalar that multiplies D0, D1, and D2)
--4: use "qBBatoBBaMODSWITCH" to perform mod switch on D0, D1, and D2
--5: perform "fastBconvEx" from B*Ba to q using "BBatoqFASTBCONVEX". apply individually on D0 D1 and D2
--6: ...to be continued...
-
-// use this for step 1 mod raise (apply individually to ct1.a ct1.b ct2.a ct2.b)
-fastBConv #(
-        .IN_BASIS_LEN(`q_BASIS_LEN),
-        .OUT_BASIS_LEN(`qBBa_BASIS_LEN),
-        .IN_BASIS(q_BASIS),
-        .OUT_BASIS(qBBa_BASIS),
-        .ZiLUT(z_MOD_q),
-        .YMODB(y_q_TO_qBBa)
-    ) conv_inst_MODRAISE (
-        .clk(clk),
-        .reset(reset),
-        .in_valid(#TODO#),// this is a single bit
-        .input_RNSpoly(#TODO#),// this is a polynomial with each coefficient in q basis
-        .out_valid(#TODO#),// this is a single bit
-        .output_RNSpoly(#TODO#)// this is a polynomial with each coefficient in qBBa basis
-    );
-
-
-// mod switch from qBBa to BBa
-// apply individually to D0 D1 and D2
-modSwitch_qBBa_to_BBa qBBatoBBaMODSWITCH (
-    .clk            (clk),
-    .reset          (reset),
-    .in_valid       (#TODO#),
-    .input_RNSpoly  (#TODO#),// this is a polynomial with each coefficient in qBBa basis
-    .out_valid      (#TODO#),
-    .output_RNSpoly (#TODO#)// this is a polynomial with each coefficient in BBa basis
-);
-
-
-// fast b conv exact from BBa to q
-// apply individually to D0 D1 and D2
-fastBConvEx_BBa_to_q BBatoqFASTBCONVEX (
-    .clk            (clk),
-    .reset          (reset),
-    .in_valid       (#TODO#),
-    .input_RNSpoly  (#TODO#),// this is a polynomial with each coefficient in BBa basis
-    .out_valid      (#TODO#),
-    .output_RNSpoly (#TODO#)// this is a polynomial with each coefficient in q basis
-);
-
-
-
-*/

@@ -35,6 +35,7 @@ module fastBConvSingle #(
 
     // compute "a" for every residue in the input
     wire wide_rns_residue_t a_re_nomod [IN_BASIS_LEN];
+    wire wide_rns_residue_t wideINBASIS_forfastmod [IN_BASIS_LEN];
     wire rns_residue_t n_a_res [IN_BASIS_LEN];
     rns_residue_t a_res [IN_BASIS_LEN]; // register
 
@@ -42,6 +43,7 @@ module fastBConvSingle #(
     generate
         // all steps are indpendent/parallel
         for (i = 0; i < IN_BASIS_LEN; ++i) begin : GEN_A_COEFFS
+            //assign wideINBASIS_forfastmod[i] = IN_BASIS[i];
             assign a_re_nomod[i] = input_RNSint[i] * ZiLUT[i];
             assign n_a_res[i] = a_re_nomod[i] % IN_BASIS[i];
         end
@@ -50,12 +52,14 @@ module fastBConvSingle #(
     // accumulate the new RNS prime from partial sums calculated over multiple (IN_BASIS_LEN) cycles
     wire rns_residue_t psum [OUT_BASIS_LEN];
     wire wide_rns_residue_t psum_nomod [OUT_BASIS_LEN];
+    wire wide_rns_residue_t wideOUTBASIS_forfastmod [OUT_BASIS_LEN];
     wire rns_residue_t n_total_sum [OUT_BASIS_LEN];
     wire [`RNS_PRIME_BITS:0] wide_n_total_sum [OUT_BASIS_LEN];
     genvar j;
     generate
         // all steps are indpendent/parallel
         for (j = 0; j < OUT_BASIS_LEN; j++) begin : PSUM_GEN
+            //assign wideOUTBASIS_forfastmod[j] = OUT_BASIS[j];
             // multiplication needs a real mod // % IN_BASIS_LEN
             assign psum_nomod[j] = a_res[current_state] * YMODB[j][current_state];
             assign psum[j] = psum_nomod[j] % OUT_BASIS[j];

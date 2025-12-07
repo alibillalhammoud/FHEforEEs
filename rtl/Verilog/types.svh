@@ -43,10 +43,12 @@ typedef rns_residue_t rns_int_q_BASIS_t [`q_BASIS_LEN];
 typedef rns_residue_t rns_int_B_BASIS_t [`B_BASIS_LEN];
 typedef rns_residue_t rns_int_Ba_BASIS_t [`Ba_BASIS_LEN];
 typedef rns_residue_t rns_coef_qBBa_BASIS_t [`q_BASIS_LEN + `B_BASIS_LEN + `Ba_BASIS_LEN];
+typedef rns_residue_t rns_coef_BBa_BASIS_t [`B_BASIS_LEN + `Ba_BASIS_LEN];
 // Polynomials
 typedef rns_int_q_BASIS_t q_BASIS_poly [`N_SLOTS]; 
 typedef rns_int_B_BASIS_t B_BASIS_poly [`N_SLOTS]; 
 typedef rns_int_Ba_BASIS_t Ba_BASIS_poly [`N_SLOTS];
+typedef rns_coef_BBa_BASIS_t BBa_BASIS_poly [`N_SLOTS];
 typedef rns_coef_qBBa_BASIS_t qBBa_BASIS_poly [`N_SLOTS];
 // wide RNS integers (each residue is double the length for mult)
 typedef wide_rns_residue_t wide_rns_int_q_BASIS_t [`q_BASIS_LEN];

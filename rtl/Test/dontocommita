@@ -1,0 +1,171 @@
+`timescale 1ns/1ps
+`include "types.svh"
+
+module tb_modSwitch_qBBa_to_BBa;
+// ================================================================
+//  DUT I/O
+// ================================================================
+logic                                            clk   = 0;
+logic                                            reset = 0;
+logic                                            in_valid;
+logic                                            out_valid;
+
+rns_residue_t input_RNSpoly  [`N_SLOTS][`qBBa_BASIS_LEN];
+rns_residue_t output_RNSpoly [`N_SLOTS][`BBa_BASIS_LEN];
+
+// ---------------- Clock ------------------------------------------------
+always #5 clk = ~clk;
+
+// ---------------- DUT --------------------------------------------------
+modSwitch_qBBa_to_BBa DUT (
+    .clk            (clk),
+    .reset          (reset),
+    .in_valid       (in_valid),
+    .input_RNSpoly  (input_RNSpoly),
+    .out_valid      (out_valid),
+    .output_RNSpoly (output_RNSpoly)
+);
+
+// **********************************************************************
+//                GOLDEN-MODEL SUPPORT FUNCTIONS
+// **********************************************************************
+
+// -------- Fast-Base-Convert :  q-basis  →  BBa-basis ------------------
+function automatic void fastBConv_gold
+(
+    input  rns_residue_t xi [`q_BASIS_LEN],          // 11 × q-basis
+    output rns_residue_t cj [`BBa_BASIS_LEN]         // 11 × BBa-basis
+);
+    rns_residue_t ai  [`q_BASIS_LEN];
+    rns_residue_t acc [`BBa_BASIS_LEN];
+
+    // ai = (xi · zi)  mod qi    (zi = q/qi  mod qi)    — z_MOD_q[]
+    for (int i = 0; i < `q_BASIS_LEN; i++) begin
+        wide_rns_residue_t mult = xi[i] * z_MOD_q[i];
+        ai[i]                   = mult % q_BASIS[i];
+    end
+
+    // cj accumulation with the pre-calculated Y matrix
+    for (int j = 0; j < `BBa_BASIS_LEN; j++) begin
+        acc[j] = '0;
+        for (int i = 0; i < `q_BASIS_LEN;  i++) begin
+            wide_rns_residue_t ps = ai[i] * y_q_TO_BBa[j][i];
+            acc[j] = (acc[j] + (ps % BBa_BASIS[j])) % BBa_BASIS[j];
+        end
+        cj[j] = acc[j];
+    end
+endfunction
+
+
+// --------- Complete qBBa → BBa  Mod-Switch  (golden) ------------------
+function automatic void modSwitch_gold
+(
+    input  rns_residue_t keep [`BBa_BASIS_LEN],   //  BBa residues (stay)
+    input  rns_residue_t drop [`q_BASIS_LEN],     //  q residues     (remove)
+    output rns_residue_t res  [`BBa_BASIS_LEN]    //  final answer
+);
+    rns_residue_t xhat_f [`BBa_BASIS_LEN];
+
+    // 1) Fast-convert dropped part (q-basis) onto the keep basis
+    fastBConv_gold(drop, xhat_f);
+
+    // 2) Finish the mod-switch :  res = (q⁻¹ · (χ − x̂))   (mod  fi)
+    for (int j = 0; j < `BBa_BASIS_LEN; j++) begin
+        rns_residue_t fi    = BBa_BASIS[j];
+        // delta = (chi - x_hat)  mod fi   (add fi first to avoid neg)
+        wide_rns_residue_t delta = (keep[j] + fi - xhat_f[j]) % fi;
+        wide_rns_residue_t mult  = qinv_MOD_BBa[j] * delta;
+        res[j] = rns_residue_t'( mult % fi );
+    end
+endfunction
+
+
+
+// **********************************************************************
+//                            TEST PROGRAM
+// **********************************************************************
+localparam int NUM_TRIALS = 1;
+
+rns_residue_t golden_answer [`N_SLOTS][`BBa_BASIS_LEN];
+bit           mismatch;
+int unsigned  pass_cnt = 0;
+int unsigned  fail_cnt = 0;
+
+
+// ================================================================
+//  MAIN SEQUENCE
+// ================================================================
+initial begin
+    // ---------------- reset ------------------------------------
+    @(posedge clk);
+    @(negedge clk);
+    reset    = 1;
+    in_valid = 0;
+    @(negedge clk);
+    reset    = 0;
+
+    // ---------------- random-test loop -------------------------
+    for (int t = 0; t < NUM_TRIALS; t++) begin
+        // ---------------- Stimulus generation -----------------
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            logic [255:0] rand256 = {
+                $urandom,$urandom,$urandom,$urandom,
+                $urandom,$urandom,$urandom,$urandom
+            };
+            for (int j = 0; j < `qBBa_BASIS_LEN; j++) begin
+                input_RNSpoly[k][j] = rand256 % qBBa_BASIS[j];
+            end
+        end
+
+        // ------------- Golden reference per slot --------------
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            // split into pieces to keep / drop
+            rns_residue_t drop_part [`q_BASIS_LEN];
+            rns_residue_t keep_part [`BBa_BASIS_LEN];
+
+            for (int j = 0; j < `q_BASIS_LEN;      j++) drop_part[j] = input_RNSpoly[k][j];
+            for (int j = 0; j < `BBa_BASIS_LEN;    j++) keep_part[j] = input_RNSpoly[k][j+`q_BASIS_LEN];
+
+            modSwitch_gold(keep_part, drop_part, golden_answer[k]);
+        end
+
+        // ------------------- Drive DUT ------------------------
+        @(negedge clk);
+        in_valid = 1'b1;
+        @(negedge clk);
+        in_valid = 1'b0;
+
+        // wait for result
+        while (!out_valid) @(posedge clk);
+
+        // ------------------- Compare --------------------------
+        mismatch = 0;
+        for (int k = 0; k < `N_SLOTS; k++) begin
+            for (int j = 0; j < `BBa_BASIS_LEN; j++) begin
+                if (output_RNSpoly[k][j] !== golden_answer[k][j]) begin
+                    $display("[%0t]  Trial %0d  SLOT %0d  RES %0d  MISMATCH  DUT=%0d  GOLD=%0d", $time, t, k, j, output_RNSpoly[k][j], golden_answer[k][j]);
+                    mismatch = 1;
+                end
+            end
+        end
+
+        if (mismatch) begin
+            fail_cnt++;
+        end else begin
+            pass_cnt++;
+        end
+
+        @(negedge clk);               // small gap before next trial
+    end
+
+    // ------------------ Summary -------------------------------
+    $display("\n======================================================");
+    $display("  Mod-Switch RTL regression finished");
+    $display("       Trials : %0d", NUM_TRIALS);
+    $display("       Passed : %0d", pass_cnt);
+    $display("       Failed : %0d", fail_cnt);
+    $display("======================================================\n");
+    $finish;
+end
+
+endmodule

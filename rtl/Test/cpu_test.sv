@@ -1,5 +1,6 @@
 `timescale 1ns/1ps
 `include "types.svh"
+`include "ct_test_inputs.svh"
 
 
 module tb_cpu;
@@ -165,26 +166,26 @@ module tb_cpu;
     q_BASIS_poly gold_A, gold_B;
     logic match_A, match_B;
     q_BASIS_poly CTCT_OUT_A_GOLD, CTCT_OUT_B_GOLD;
-    q_BASIS_poly A1__INPUT, A2__INPUT, B1__INPUT, B2__INPUT;
 
     
     // Initialize test vectors with simple patterns
     
-    foreach(CT1_A[slot]) begin
-      foreach(CT1_A[slot][prime]) begin
-        CT1_A[slot][prime] = 5;
-        CT1_B[slot][prime] = 10;
-        CT2_A[slot][prime] = 7;
-        CT2_B[slot][prime] = 3;
-        PT[slot][prime]    = 4;
-      end
-    end
-    /*
+    // foreach(CT1_A[slot]) begin
+    //   foreach(CT1_A[slot][prime]) begin
+    //     CT1_A[slot][prime] = 5;
+    //     CT1_B[slot][prime] = 10;
+    //     CT2_A[slot][prime] = 7;
+    //     CT2_B[slot][prime] = 3;
+    //     PT[slot][prime]    = 4;
+    //   end
+    // end
+    
     CT1_A = A1__INPUT;
     CT1_B = B1__INPUT;
     CT2_A = A2__INPUT;
     CT2_B = B2__INPUT;
-    */
+    PT = B2__INPUT;
+    
 
     // Initialize signals
     op = '0;
