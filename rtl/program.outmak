@@ -1,0 +1,48 @@
+module load vcs/2023.12-SP2-1 || true
+vcs -sverilog -full64 -timescale=1ns/1ps +incdir+verilog +incdir+test -Mdir=build/csrc -o build/simv_cpu -debug_access+all +v2k verilog/cpu.sv verilog/regfile.sv verilog/adder.sv verilog/mult.sv verilog/ntt_full.sv verilog/ntt_butterfly.sv verilog/modSwitch_qBBa_to_BBa.sv verilog/fastBConv.sv verilog/fastBConvEx_BBa_to_q.sv test/cpu_test.sv
+                         Chronologic VCS (TM)
+        Version X-2025.06-1_Full64 -- Sun Dec  7 12:32:14 2025
+
+                    Copyright (c) 1991 - 2025 Synopsys, Inc.
+   This software and the associated documentation are proprietary to Synopsys,
+ Inc. This software may only be used in accordance with the terms and conditions
+ of a written license agreement with Synopsys, Inc. All other use, reproduction,
+   or distribution of this software is strictly prohibited.  Licensed Products
+     communicate with Synopsys servers for the purpose of providing software
+    updates, detecting software piracy and verifying that customers are using
+    Licensed Products in conformity with the applicable License Key for such
+  Licensed Products. Synopsys will use information gathered in connection with
+    this process to deliver software updates and pursue software pirates and
+                                   infringers.
+
+ Inclusivity & Diversity - Visit SolvNetPlus to read the "Synopsys Statement on
+            Inclusivity and Diversity" (Refer to article 000036315 at
+                        https://solvnetplus.synopsys.com)
+
+Parsing design file 'verilog/cpu.sv'
+Parsing included file 'verilog/types.svh'.
+Back to file 'verilog/cpu.sv'.
+
+Error-[IND] Identifier not declared
+verilog/cpu.sv, 594
+  Identifier 'fu_out_1_Ba' has not been declared yet. If this error is not 
+  expected, please check if you have set `default_nettype to none.
+  
+
+
+Error-[IND] Identifier not declared
+verilog/cpu.sv, 595
+  Identifier 'fu_out_2_Ba' has not been declared yet. If this error is not 
+  expected, please check if you have set `default_nettype to none.
+  
+
+
+Error-[UM] Undefined macro
+verilog/cpu.sv, 614
+  Undefined macro exists as: 'b_BASIS_LEN'   
+  "verilog/cpu.sv", 614: token is '`b_BASIS_LEN'
+              for (int j = 0; j < `b_BASIS_LEN; j++) begin
+                                              ^
+
+3 errors
+CPU time: .197 seconds to compile

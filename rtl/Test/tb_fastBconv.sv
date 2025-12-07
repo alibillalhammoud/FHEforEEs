@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 `include "types.svh"
-
+`include "ct_test_inputs.svh"
 
 module tb_fastBConvSingle;
 

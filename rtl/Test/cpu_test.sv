@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 `include "types.svh"
 
+
 module tb_cpu;
 
   logic clk, reset;
@@ -34,11 +35,11 @@ module tb_cpu;
     while (!done_out && cycle < 500) begin
       
 
-      // $display("[%0t] [%s] cyc=%0d  stage=%0d  stage1_valid=%0b  stage1_op_mode=%0d",
+      // $display("[%0t] [%s] cyc=%0d  programCounter=%0d  programCounter1_valid=%0b  programCounter1_op_mode=%0d",
       //           $time, label, cycle,
-      //           u_cpu.stage,
-      //           u_cpu.stage1_valid,
-      //           u_cpu.stage1_op_mode);
+      //           u_cpu.programCounter,
+      //           u_cpu.programCounter1_valid,
+      //           u_cpu.programCounter1_op_mode);
 
       // $display("ntt_1_start=%0b ntt_2_start=%0b  ntt_1_valid_in=%0b ntt_2_valid_in=%0b",
       //           u_cpu.ntt_1_start,
@@ -64,16 +65,16 @@ module tb_cpu;
     end
 
     if (!done_out) begin
-      $display("[TIMEOUT] %s: done_out never went high after %0d cycles", label, cycle);
-      $display("          Final: stage=%0d stage1_op_mode=%0d doing_ntt=%0b ntt_1_valid_out=%0b ntt_2_valid_out=%0b\n",
-               u_cpu.stage,
-               u_cpu.stage1_op_mode,
-               u_cpu.doing_ntt,
-               u_cpu.ntt_1_valid_out,
-               u_cpu.ntt_2_valid_out);
+      // $display("[TIMEOUT] %s: done_out never went high after %0d cycles", label, cycle);
+      // $display("          Final: programCounter=%0d programCounter1_op_mode=%0d doing_ntt=%0b ntt_1_valid_out=%0b ntt_2_valid_out=%0b\n",
+      //          u_cpu.programCounter,
+      //          u_cpu.programCounter1_op_mode,
+      //          u_cpu.doing_ntt,
+      //          u_cpu.ntt_1_valid_out,
+      //          u_cpu.ntt_2_valid_out);
     end else begin
-      $display("[DONE] %s completed at %0t  (stage=%0d)\n",
-               label, $time, u_cpu.stage);
+      // $display("[DONE] %s completed at %0t  (programCounter=%0d)\n",
+      //          label, $time, u_cpu.programCounter);
     end
 
     @(posedge clk); // allow WB to settle
@@ -129,6 +130,29 @@ module tb_cpu;
     mod_mul = prod % modulus;
   endfunction
 
+  // ------------------------------------
+  // Dump the contents of the register file
+  // ------------------------------------
+  task automatic dump_rf(input string testname);
+    string fname;
+    int    fd;
+
+    // create   regstate<testname>.out
+    fname = $sformatf("regstate%s.out", testname);
+    fd    = $fopen(fname, "w");
+    if (fd == 0) begin
+      $fatal(1, "Could not open %s for write!", fname);
+    end
+
+    // traverse the 1-D array of q_BASIS_poly’s
+    foreach (u_cpu.u_rf_q.mem[regID]) begin
+      // %p prints the entire unpacked structure/array
+      $fdisplay(fd, "REG[%0d] = %p", regID, u_cpu.u_rf_q.mem[regID]);
+    end
+    $fclose(fd);
+    $display("  ► Register file dumped to %s", fname);
+  endtask
+
   // =========================================================
   // Main Test Sequence
   // =========================================================
@@ -140,8 +164,12 @@ module tb_cpu;
     q_BASIS_poly outA, outB;
     q_BASIS_poly gold_A, gold_B;
     logic match_A, match_B;
+    q_BASIS_poly CTCT_OUT_A_GOLD, CTCT_OUT_B_GOLD;
+    q_BASIS_poly A1__INPUT, A2__INPUT, B1__INPUT, B2__INPUT;
+
     
     // Initialize test vectors with simple patterns
+    
     foreach(CT1_A[slot]) begin
       foreach(CT1_A[slot][prime]) begin
         CT1_A[slot][prime] = 5;
@@ -151,6 +179,12 @@ module tb_cpu;
         PT[slot][prime]    = 4;
       end
     end
+    /*
+    CT1_A = A1__INPUT;
+    CT1_B = B1__INPUT;
+    CT2_A = A2__INPUT;
+    CT2_B = B2__INPUT;
+    */
 
     // Initialize signals
     op = '0;
@@ -225,6 +259,7 @@ module tb_cpu;
     end else begin
       $display("[FAIL] CT-CT ADD test failed!\n");
     end
+    dump_rf("T1");// dump the register file
 
     // =======================================================
     // TEST 2: CT-PT ADD
@@ -326,6 +361,46 @@ module tb_cpu;
     end else begin
       $display("[FAIL] CT-PT MUL test failed!\n");
     end
+
+    // =======================================================
+    // TEST 4: CT-CT MUL
+    // =======================================================
+    $display("==== TEST 4: CT-CT MUL ====");
+
+    op.mode   = OP_CT_CT_MUL;
+    op.idx1_a = 0;  // CT1.A
+    op.idx1_b = 1;  // CT1.B
+    op.idx2_a = 2;  // CT2.A
+    op.idx2_b = 3;  // CT2.B
+    op.out_a  = 9;  // result.A -> REG[9]
+    op.out_b  = 10; // result.B -> REG[10]
+
+    $display("[T4] Issued CT-CT MUL: idx1_a=%0d idx1_b=%0d idx2_a=%0d idx2_b=%0d out_a=%0d out_b=%0d",
+             op.idx1_a, op.idx1_b, op.idx2_a, op.idx2_b, op.out_a, op.out_b);
+
+    wait_done_mul("CT-CT MUL");
+
+    // Read DUT outputs
+    outA = u_cpu.u_rf_q.mem[9];
+    outB = u_cpu.u_rf_q.mem[10];
+
+    // Golden from header
+    gold_A = CTCT_OUT_A_GOLD;
+    gold_B = CTCT_OUT_B_GOLD;
+
+    match_A = compare_polys("CT-CT MUL (A)", outA, gold_A);
+    match_B = compare_polys("CT-CT MUL (B)", outB, gold_B);
+
+    if (match_A && match_B) begin
+      $display("[PASS] CT-CT MUL test passed!");
+      $display("  HW A[0][0] = %0d, GOLD A[0][0] = %0d", outA[0][0], gold_A[0][0]);
+      $display("  HW B[0][0] = %0d, GOLD B[0][0] = %0d\n", outB[0][0], gold_B[0][0]);
+    end else begin
+      $display("[FAIL] CT-CT MUL test failed!");
+      $display("  HW A[0][0] = %0d, GOLD A[0][0] = %0d", outA[0][0], gold_A[0][0]);
+      $display("  HW B[0][0] = %0d, GOLD B[0][0] = %0d\n", outB[0][0], gold_B[0][0]);
+    end
+    
 
     // =======================================================
     // Summary

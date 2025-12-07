@@ -21,7 +21,8 @@ module fastBConvSingle #(
     input wire rns_residue_t input_RNSint [IN_BASIS_LEN],
 
     output wire out_valid,
-    output rns_residue_t output_RNSint [OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
+    output rns_residue_t output_RNSint [OUT_BASIS_LEN], // this is a register. Value is valid when out_valid is asserted
+    output wire doing_fastBconv
 );
     // verilog compilation error checking
     if ((IN_BASIS_LEN==1 && IN_BASIS[0]==0) || (OUT_BASIS_LEN==1 && OUT_BASIS[0]==0) || ZiLUT[0]==0) begin
@@ -67,6 +68,7 @@ module fastBConvSingle #(
     assign out_valid = (current_state==IN_BASIS_LEN);
     assign n_out_valid = ((current_state+1)==IN_BASIS_LEN);
     // sequential logic / state machine controller
+    assign doing_fastBconv = compute_is_active;
     always_ff @( posedge clk ) begin : MULTICYCLE_REGS
         // if in_valid, start the state counter and latch the computed "a" coefficients
         current_state <= (reset || in_valid) ? '0 : (compute_is_active ? (current_state + 1) : current_state);
@@ -98,7 +100,8 @@ module fastBConv #(
     input wire rns_residue_t input_RNSpoly [`N_SLOTS][IN_BASIS_LEN],
 
     output wire out_valid,
-    output rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN] // this is a register. Value is valid when out_valid is asserted
+    output rns_residue_t output_RNSpoly [`N_SLOTS][OUT_BASIS_LEN], // this is a register. Value is valid when out_valid is asserted
+    output wire doing_fastBconv
 );
     // verilog compilation error checking
     if ((IN_BASIS_LEN==1 && IN_BASIS[0]==0) || (OUT_BASIS_LEN==1 && OUT_BASIS[0]==0) || ZiLUT[0]==0) begin
@@ -106,6 +109,7 @@ module fastBConv #(
     end
     
     wire [`N_SLOTS-1:0] slot_out_valid;
+    wire [`N_SLOTS-1:0] slot_running_compute;
     
     genvar k;
     generate
@@ -123,11 +127,13 @@ module fastBConv #(
                 .in_valid(in_valid), // could be indexed if you're triggering each slot separately
                 .input_RNSint(input_RNSpoly[k]), // [IN_BASIS_LEN] slice for this slot
                 .out_valid(slot_out_valid[k]),
-                .output_RNSint(output_RNSpoly[k])
+                .output_RNSint(output_RNSpoly[k]),
+                .doing_fastBconv(slot_running_compute[k])
             );
         end
     endgenerate
 
     assign out_valid = slot_out_valid[0]; // logic is identical for all (it is redundant)
+    assign doing_fastBconv = slot_running_compute[0];
 endmodule
 
