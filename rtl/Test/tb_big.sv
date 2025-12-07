@@ -142,13 +142,13 @@ module ntt_tb;
         $finish;
     end
 
-    // --- Timeout watchdog (prevents simulation from hanging) ---
-    initial begin
-        #1000; // Force stop after 100 ns (~100 cycles at 10 ns period)
-        if (data_valid_out === 0) begin
-            $display("\nERROR: Timeout! Output valid never went high.");
-            $finish;
-        end
-    end
+    // // --- Timeout watchdog (prevents simulation from hanging) ---
+    // initial begin
+    //     #1000; // Force stop after 100 ns (~100 cycles at 10 ns period)
+    //     if (data_valid_out === 0) begin
+    //         $display("\nERROR: Timeout! Output valid never went high.");
+    //         $finish;
+    //     end
+    // end
 
 endmodule

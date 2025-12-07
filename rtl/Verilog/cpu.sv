@@ -37,6 +37,8 @@ module cpu (
 
   logic ntt_1_valid_in, ntt_1_valid_out, ntt_2_valid_in, ntt_2_valid_out;
   logic doing_ntt;
+  logic ntt_1_start, ntt_2_start;
+
 
   q_BASIS_poly   op_a_q, op_b_q, op_c_q, op_d_q;
   B_BASIS_poly   op_a_b, op_b_b, op_c_b, op_d_b;
@@ -107,6 +109,10 @@ module cpu (
   //  STAGE 1: Register Access
   // ============================
   always_ff @(posedge clk) begin
+    $display("Stage: %d, Operation: %d, Done: %b",stage, operation_mode, done_out);
+    $display("Op_a: %d, Op_b: %d, Op_c: %d, Op_d: %d", op_a_q[0][0], op_b_q[0][0], op_c_q[0][0], op_d_q[0][0]);
+    $display("Fu_1: %d, Fu_2: %d", fu_out_1_q[0][0], fu_out_2_q[0][0]);
+    $display("NTT_1_Valid: %b, NTT_2_Valid: %b", ntt_1_valid_out, ntt_2_valid_out);
     if (reset) begin
       dest0_valid_q     <= 1'b0;
       dest1_valid_q     <= 1'b0;
@@ -129,7 +135,7 @@ module cpu (
       stage1_src1_q     <= source1_poly_q;
       stage1_src2_q     <= source2_poly_q;
       stage1_src3_q     <= source3_poly_q;
-      stage1_op_mode    <= operation_mode;
+      stage1_op_mode    <= (done || stage1_op_mode == NO_OP) ? operation_mode : stage1_op_mode;
       stage1_dest0_idx  <= dest0_register_index_q;
       stage1_dest1_idx  <= dest1_register_index_q;
       dest0_valid_q     <= wb_0_q;
@@ -137,9 +143,34 @@ module cpu (
       dest0_poly_q      <= fu_out_1_q;
       dest1_poly_q      <= fu_out_2_q;
       done_out          <= done; 
-      stage             <= (done) ? 4'b0 : (doing_ntt & ~ntt_1_valid_out) ? stage : stage + 1;
+      doing_ntt <= (stage1_op_mode == OP_CT_PT_MUL) &&  (stage == 4'b0010 || stage == 4'b0111 || stage == 4'b0100 || stage == 4'b1001);
+      stage             <= (done|| stage1_op_mode == NO_OP) ? 4'b0 : (ntt_1_valid_in & ~ntt_1_valid_out) ? stage : stage + 1;
+      // when operation_mode != No_OP, stage = 0
     end
   end
+
+  // always_ff @(posedge clk or posedge reset) begin
+  //   if (reset) begin
+  //     ntt_1_start <= 1'b0;
+  //     ntt_2_start <= 1'b0;
+  //   end else begin
+  //     // default: low every cycle
+  //     ntt_1_start <= 1'b0;
+  //     ntt_2_start <= 1'b0;
+
+  //     // start NTT for CT1.A and PT (forward NTT step)
+  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0010 &&  !ntt_1_valid_out) begin
+  //       ntt_1_start <= 1'b1;
+  //       ntt_2_start <= 1'b1;
+  //     end
+
+  //     // start NTT for CT1.B and PT (forward NTT step for B)
+  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0111 &&  !ntt_1_valid_out) begin
+  //       ntt_1_start <= 1'b1;
+  //       ntt_2_start <= 1'b1;
+  //     end
+  //   end
+  // end
 
   // ============================
   //  Functional Units
@@ -247,7 +278,7 @@ module cpu (
         .clk(clk),
         .reset(reset),
         
-        .data_valid_in(ntt_1_valid_in), 
+        .data_valid_in(ntt_1_valid_in & ~doing_ntt), 
         .iNTT_mode(inverse),    
 
         .Data_in(data_in_a),
@@ -267,7 +298,7 @@ module cpu (
         .clk(clk),
         .reset(reset),
         
-        .data_valid_in(ntt_2_valid_in), 
+        .data_valid_in(ntt_2_valid_in & ~doing_ntt), 
         .iNTT_mode(inverse),    
 
         .Data_in(data_in_c),
@@ -313,128 +344,138 @@ module cpu (
     wb_1_q     = 1'b0;
     done       = 1'b0;
     inverse    = 1'b0;
+
+    // valid_in = one-cycle pulse from the FF above
     ntt_1_valid_in = 1'b0;
     ntt_2_valid_in = 1'b0;
-    doing_ntt = 1'b0;
+
+    // we consider ourselves "in an NTT step" at these stages
 
     if (stage1_valid) begin 
       unique case (stage1_op_mode)
         NO_OP: ;
+
         OP_CT_CT_ADD: begin
           op_a_q     = stage1_src0_q;  // CT0.A
           op_b_q     = stage1_src2_q;  // CT1.A
           op_c_q     = stage1_src1_q;  // CT0.B
           op_d_q     = stage1_src3_q;  // CT1.B
 
-          fu_out_1_q = add_out_1;    // sum for A
-          fu_out_2_q = add_out_2;    // sum for B
+          fu_out_1_q = add_out_1;      // sum for A
+          fu_out_2_q = add_out_2;      // sum for B
           wb_0_q     = 1;
           wb_1_q     = 1;
           done       = 1;
         end
 
         OP_CT_PT_ADD: begin
-          op_a_q       = stage1_src0_q;  // CT1.A           
-          op_b_q       = '{default: '0};  // 0
-          op_c_q       = stage1_src1_q; // CT1.B     
-          op_d_q       = stage1_src3_q; // Scaled PT            
+          op_a_q     = stage1_src0_q;      // CT1.A
+          op_b_q     = '{default: '0};     // 0
+          op_c_q     = stage1_src1_q;      // CT1.B
+          op_d_q     = stage1_src3_q;      // scaled PT
           fu_out_1_q = add_out_1;
-          fu_out_2_q = add_out_2;    
-          wb_0_q     = 1;                
+          fu_out_2_q = add_out_2;
+          wb_0_q     = 1;
           wb_1_q     = 1;
           done       = 1;
         end
 
         OP_CT_PT_MUL: begin
           case (stage)
-          // CT1.A * Plaintext
-          // TWIST
-          4'b0001: begin
-            op_a_q     = stage1_src0_q;                       // CT1.A (vec)
-            op_b_q     = twist_factor_q;
-            op_c_q     = stage1_src3_q;                       // PT (vec)
-            op_d_q     = twist_factor_q;
-            fu_out_1_q = mul_out_1_q;
-            fu_out_2_q = mul_out_2_q;
-          end
-          // NTT
-          4'b0010: begin
-            inverse    = 1'b0;
-            op_a_q     = dest0_poly_q; //CT1.A * twist_factor_q
-            op_c_q     = dest1_poly_q; //PT * twist_factor_q
-            fu_out_1_q = ntt_out_1_q;
-            fu_out_2_q = ntt_out_2_q;
-            ntt_1_valid_in = 1'b1;
-            ntt_2_valid_in = 1'b1;
-            doing_ntt = 1'b1;
-          end
-          // MUL
-          4'b0011: begin
-            op_a_q     = dest0_poly_q; //NTT'd CT1.A * twist_factor_q
-            op_b_q     = dest1_poly_q; //NTT'd PT * twist_factor_q
-            fu_out_1_q = mul_out_1_q; // Correct CT1.A * PT
-          end
-          // Inverse NTT
-          4'b0100: begin
-            inverse    = 1'b1;
-            op_a_q     = dest0_poly_q;
-            fu_out_1_q = ntt_out_1_q;
-            ntt_1_valid_in = 1'b1;
-            doing_ntt = 1'b1;
-          end
-          // Untwist
-          4'b0101: begin
-            op_a_q     = dest0_poly_q;
-            op_b_q     = untwist_factor_q;
-            fu_out_1_q = mul_out_1_q;
-            wb_0_q     = 1;
-          end
+            // CT1.A * Plaintext
+            // TWIST
+            4'b0001: begin
+              op_a_q     = stage1_src0_q;       // CT1.A (vec)
+              op_b_q     = twist_factor_q;
+              op_c_q     = stage1_src3_q;       // PT (vec)
+              op_d_q     = twist_factor_q;
+              fu_out_1_q = mul_out_1_q;
+              fu_out_2_q = mul_out_2_q;
+            end
 
-          // CT1.B * Plaintext
-          4'b0110: begin
-            op_a_q     = stage1_src1_q;                       // CT1.B
-            op_b_q     = twist_factor_q;
-            op_c_q     = stage1_src3_q;                       // PT
-            op_d_q     = twist_factor_q;
-            fu_out_1_q = mul_out_1_q;
-            fu_out_2_q = mul_out_2_q;
-          end
-          // NTT
-          4'b0111: begin
-            inverse    = 1'b0;
-            op_a_q     = dest0_poly_q;
-            op_c_q     = dest1_poly_q;
-            fu_out_1_q = ntt_out_1_q;
-            fu_out_2_q = ntt_out_2_q;
-            ntt_1_valid_in = 1'b1;
-            ntt_2_valid_in = 1'b1;
-            doing_ntt = 1'b1;
-          end
-          // MUL
-          4'b1000: begin
-            op_a_q     = dest0_poly_q;
-            op_b_q     = dest1_poly_q;
-            fu_out_1_q = mul_out_1_q;
-          end
-          // Inverse NTT
-          4'b1001: begin
-            inverse    = 1'b1;
-            op_a_q     = dest0_poly_q;
-            fu_out_1_q = ntt_out_1_q;
-            ntt_1_valid_in = 1'b1;
-            doing_ntt = 1'b1;
-          end
-          // Untwist
-          4'b1010: begin
-            op_a_q     = dest0_poly_q;
-            op_b_q     = untwist_factor_q;
-            fu_out_1_q = mul_out_1_q;
-            wb_1_q     = 1;
-            done       = 1;
-          end
-          endcase  
+            // NTT of CT1.A and PT
+            4'b0010: begin
+              inverse    = 1'b0;
+              op_a_q     = dest0_poly_q;        // CT1.A * twist
+              op_c_q     = dest1_poly_q;        // PT * twist
+              fu_out_1_q = ntt_out_1_q;
+              fu_out_2_q = ntt_out_2_q;
+              // $display("inside first NTT");
+              ntt_1_valid_in = 1'b1;
+              ntt_2_valid_in = 1'b1;
+            end
+
+            // MUL in NTT domain (A part)
+            4'b0011: begin
+              op_a_q     = dest0_poly_q;        // NTT(CT1.A * twist)
+              op_b_q     = dest1_poly_q;        // NTT(PT * twist)
+              fu_out_1_q = mul_out_1_q;         // CT1.A * PT
+            end
+
+            // Inverse NTT (A)
+            4'b0100: begin
+              inverse    = 1'b1;
+              op_a_q     = dest0_poly_q;
+              fu_out_1_q = ntt_out_1_q;
+              ntt_1_valid_in = 1'b1;
+            end
+
+            // Untwist (A)
+            4'b0101: begin
+              op_a_q     = dest0_poly_q;
+              op_b_q     = untwist_factor_q;
+              fu_out_1_q = mul_out_1_q;
+              wb_0_q     = 1;
+            end
+
+            // CT1.B * Plaintext — twist
+            4'b0110: begin
+              op_a_q     = stage1_src1_q;       // CT1.B
+              op_b_q     = twist_factor_q;
+              op_c_q     = stage1_src3_q;       // PT
+              op_d_q     = twist_factor_q;
+              fu_out_1_q = mul_out_1_q;
+              fu_out_2_q = mul_out_2_q;
+            end
+
+            // NTT (B path)
+            4'b0111: begin
+              inverse    = 1'b0;
+              op_a_q     = dest0_poly_q;
+              op_c_q     = dest1_poly_q;
+              fu_out_1_q = ntt_out_1_q;
+              fu_out_2_q = ntt_out_2_q;
+              ntt_1_valid_in = 1'b1;
+              ntt_2_valid_in = 1'b1;
+              // no direct ntt_*_valid_in or doing_ntt here
+            end
+
+            // MUL in NTT domain (B part)
+            4'b1000: begin
+              op_a_q     = dest0_poly_q;
+              op_b_q     = dest1_poly_q;
+              fu_out_1_q = mul_out_1_q;
+            end
+
+            // Inverse NTT (B)
+            4'b1001: begin
+              inverse    = 1'b1;
+              op_a_q     = dest0_poly_q;
+              fu_out_1_q = ntt_out_1_q;
+              ntt_1_valid_in = 1'b1;
+              // ntt_1_valid_in from ntt_1_start FF
+            end
+
+            // Untwist (B)
+            4'b1010: begin
+              op_a_q     = dest0_poly_q;
+              op_b_q     = untwist_factor_q;
+              fu_out_2_q = mul_out_1_q;
+              wb_1_q     = 1;
+              done       = 1;
+            end
+          endcase
         end
-
       endcase
     end
 
@@ -443,5 +484,6 @@ module cpu (
       endcase
     end
   end
+
 
 endmodule

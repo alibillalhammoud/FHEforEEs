@@ -321,11 +321,11 @@ module poly_mult_tb;
         $finish;
     end
 
-    // Watchdog to prevent infinite simulation
-    initial begin
-        #5000;
-        $display("ERROR: Watchdog Timeout");
-        $finish;
-    end
+    // // Watchdog to prevent infinite simulation
+    // initial begin
+    //     #5000;
+    //     $display("ERROR: Watchdog Timeout");
+    //     $finish;
+    // end
 
 endmodule

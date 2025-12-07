@@ -19,13 +19,66 @@ module tb_cpu;
   initial clk = 0;
   always #5 clk = ~clk;
 
-  // Wait until done_out == 1
-  task wait_done();
+    // Wait until done_out == 1
+  task wait_done_add(input string label);
     @(posedge clk);
     op.mode = NO_OP;
     while (!done_out) @(posedge clk);
     @(posedge clk); // allow writeback to settle
   endtask
+
+  task wait_done_mul(input string label);
+    int cycle;
+    cycle = 0;
+
+    while (!done_out && cycle < 500) begin
+      
+
+      // $display("[%0t] [%s] cyc=%0d  stage=%0d  stage1_valid=%0b  stage1_op_mode=%0d",
+      //           $time, label, cycle,
+      //           u_cpu.stage,
+      //           u_cpu.stage1_valid,
+      //           u_cpu.stage1_op_mode);
+
+      // $display("ntt_1_start=%0b ntt_2_start=%0b  ntt_1_valid_in=%0b ntt_2_valid_in=%0b",
+      //           u_cpu.ntt_1_start,
+      //           u_cpu.ntt_2_start,
+      //           u_cpu.ntt_1_valid_in,
+      //           u_cpu.ntt_2_valid_in);
+
+      // $display("         ntt_1_valid_out=%0b ntt_2_valid_out=%0b  doing_ntt=%0b",
+      //           u_cpu.ntt_1_valid_out,
+      //           u_cpu.ntt_2_valid_out,
+      //           u_cpu.doing_ntt);
+
+      // $display("         dest0_valid_q=%0b dest1_valid_q=%0b  done_internal=%0b done_out=%0b\n",
+      //           u_cpu.dest0_valid_q,
+      //           u_cpu.dest1_valid_q,
+      //           u_cpu.done,
+      //           done_out);
+
+      @(posedge clk);
+      op.mode = NO_OP;
+      cycle++;
+
+    end
+
+    if (!done_out) begin
+      $display("[TIMEOUT] %s: done_out never went high after %0d cycles", label, cycle);
+      $display("          Final: stage=%0d stage1_op_mode=%0d doing_ntt=%0b ntt_1_valid_out=%0b ntt_2_valid_out=%0b\n",
+               u_cpu.stage,
+               u_cpu.stage1_op_mode,
+               u_cpu.doing_ntt,
+               u_cpu.ntt_1_valid_out,
+               u_cpu.ntt_2_valid_out);
+    end else begin
+      $display("[DONE] %s completed at %0t  (stage=%0d)\n",
+               label, $time, u_cpu.stage);
+    end
+
+    @(posedge clk); // allow WB to settle
+  endtask
+
 
   // ================================
   // Task: Compare two polynomials
@@ -147,7 +200,7 @@ module tb_cpu;
     op.out_a  = 5; // result.A stored in reg[5]
     op.out_b  = 6; // result.B stored in reg[6]
 
-    wait_done();
+    wait_done_add("CT-CT ADD");
 
     // Read results
     outA = u_cpu.u_rf_q.mem[5];
@@ -188,7 +241,7 @@ module tb_cpu;
     op.out_a  = 7; // result.A stored in reg[7]
     op.out_b  = 8; // result.B stored in reg[8]
 
-    wait_done();
+    wait_done_add("CT-PT ADD");
     // @(posedge clk);
     // @(posedge clk);
     // $display("op_a: %0d, op_b: %0d", u_cpu.op_a_q[0][0], u_cpu.op_b_q[0][0]); 
@@ -227,6 +280,51 @@ module tb_cpu;
       $display("  Result B[0][0] = %0d (expected %0d)\n", outB[0][0], gold_B[0][0]);
     end else begin
       $display("[FAIL] CT-PT ADD test failed!\n");
+    end
+
+    // =======================================================
+    // TEST 3: CT-PT MUL
+    // CT_out.A = CT1.A * PT
+    // CT_out.B = CT1.B * PT
+    // (per-slot, per-prime multiplication mod q_BASIS[prime])
+    // =======================================================
+    $display("==== TEST 3: CT-PT MUL ====");
+    
+    op.mode   = OP_CT_PT_MUL;
+    op.idx1_a = 0;  // CT1.A
+    op.idx1_b = 1;  // CT1.B
+    op.idx2_a = 0;  // unused in your controller for MUL path
+    op.idx2_b = 4;  // PT
+    op.out_a  = 9;  // result.A -> REG[9]
+    op.out_b  = 10; // result.B -> REG[10]
+
+    $display("[T3] Issued CT-PT MUL: idx1_a=%0d idx1_b=%0d idx2_b(PT)=%0d out_a=%0d out_b=%0d",
+             op.idx1_a, op.idx1_b, op.idx2_b, op.out_a, op.out_b);
+
+    wait_done_mul("CT-PT MUL");
+
+    // Read back results from regfile
+    outA = u_cpu.u_rf_q.mem[9];
+    outB = u_cpu.u_rf_q.mem[10];
+
+    // Compute expected results: CT1.* * PT (mod q_BASIS)
+    foreach (gold_A[slot]) begin
+      foreach (gold_A[slot][prime]) begin
+        gold_A[slot][prime] = mod_mul(CT1_A[slot][prime],  PT[slot][prime],  q_BASIS[prime]);
+        gold_B[slot][prime] = mod_mul(CT1_B[slot][prime],  PT[slot][prime],  q_BASIS[prime]);
+      end
+    end
+
+    // Compare results
+    match_A = compare_polys("CT-PT MUL (A)", outA, gold_A);
+    match_B = compare_polys("CT-PT MUL (B)", outB, gold_B);
+
+    if (match_A && match_B) begin
+      $display("[PASS] CT-PT MUL test passed!\n");
+      $display("  Result A[0][0] = %0d (expected %0d)", outA[0][0], gold_A[0][0]);
+      $display("  Result B[0][0] = %0d (expected %0d)\n", outB[0][0], gold_B[0][0]);
+    end else begin
+      $display("[FAIL] CT-PT MUL test failed!\n");
     end
 
     // =======================================================
