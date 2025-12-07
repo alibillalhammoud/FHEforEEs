@@ -48,6 +48,33 @@ module cpu (
   B_BASIS_poly  mul_out_1_b, mul_out_2_b,fu_out_1_b, fu_out_2_b, ntt_out_1_b, ntt_out_2_b;
   Ba_BASIS_poly mul_out_1_ba, mul_out_2_ba, fu_out_1_ba, fu_out_2_ba, ntt_out_1_ba, ntt_out_2_ba;
 
+  // ============================================================
+  //  For CT-CT MUL path
+  // ============================================================
+
+  // A1,B1,A2,B2 after mod-raise (q -> qBBa)
+  qBBa_BASIS_poly ct1_A_qBBa, ct1_B_qBBa;
+  qBBa_BASIS_poly ct2_A_qBBa, ct2_B_qBBa;
+
+  // D0, D1, D2 in qBBa then BBa then q
+  qBBa_BASIS_poly D0_qBBa, D1_qBBa, D2_qBBa;
+  BBa_BASIS_poly  D0_BBa,  D1_BBa,  D2_BBa;
+  q_BASIS_poly    D0_q,    D1_q,    D2_q;
+
+  // Valid signals for the multi-cycle blocks
+  logic modraise_valid_in;
+  logic [3:0] modraise_sel;   // which input are we mod-raising
+  logic modraise_done;        // OR of all mod-raise out_valids
+
+  logic modswitch_valid_in;
+  logic [1:0] modswitch_sel;  // which Dk is used
+  logic modswitch_done;
+
+  logic fastbconvex_valid_in;
+  logic [1:0] fastbconvex_sel;
+  logic fastbconvex_done;
+
+
   logic stage1_valid;
   q_BASIS_poly stage1_src0_q;
   q_BASIS_poly stage1_src1_q;
@@ -148,29 +175,6 @@ module cpu (
       // when operation_mode != No_OP, stage = 0
     end
   end
-
-  // always_ff @(posedge clk or posedge reset) begin
-  //   if (reset) begin
-  //     ntt_1_start <= 1'b0;
-  //     ntt_2_start <= 1'b0;
-  //   end else begin
-  //     // default: low every cycle
-  //     ntt_1_start <= 1'b0;
-  //     ntt_2_start <= 1'b0;
-
-  //     // start NTT for CT1.A and PT (forward NTT step)
-  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0010 &&  !ntt_1_valid_out) begin
-  //       ntt_1_start <= 1'b1;
-  //       ntt_2_start <= 1'b1;
-  //     end
-
-  //     // start NTT for CT1.B and PT (forward NTT step for B)
-  //     if (stage1_op_mode == OP_CT_PT_MUL &&  stage1_valid &&  stage == 4'b0111 &&  !ntt_1_valid_out) begin
-  //       ntt_1_start <= 1'b1;
-  //       ntt_2_start <= 1'b1;
-  //     end
-  //   end
-  // end
 
   // ============================
   //  Functional Units
@@ -487,3 +491,62 @@ module cpu (
 
 
 endmodule
+
+/*
+
+- 1: perform mod raise from q-> qBBa (use the fastBconv block "conv_inst_MODRAISE")
+    - do this for each polynomial in ct1.a ct1.b ct2.a ct2.b
+- 2: do this: 
+      D0 = self.polynomial_mul(B1,B2)
+      D1 = self.polynomial_mul(B2,A1) + self.polynomial_mul(B1,A2)
+      D2 = self.polynomial_mul(A1,A2)
+-3: multiply everything by `t_MODULUS (a single integer scalar that multiplies D0, D1, and D2)
+-4: use "qBBatoBBaMODSWITCH" to perform mod switch on D0, D1, and D2
+-5: perform "fastBconvEx" from B*Ba to q using "BBatoqFASTBCONVEX". apply individually on D0 D1 and D2
+-6: ...to be continued...
+
+// use this for step 1 mod raise (apply individually to ct1.a ct1.b ct2.a ct2.b)
+fastBConv #(
+        .IN_BASIS_LEN(`q_BASIS_LEN),
+        .OUT_BASIS_LEN(`qBBa_BASIS_LEN),
+        .IN_BASIS(q_BASIS),
+        .OUT_BASIS(qBBa_BASIS),
+        .ZiLUT(z_MOD_q),
+        
+        .YMODB(y_q_TO_qBBa)
+    ) conv_inst_MODRAISE (
+        .clk(clk),
+        .reset(reset),
+        .in_valid(#TODO#),// this is a single bit
+        .input_RNSpoly(#TODO#),// this is a polynomial with each coefficient in q basis
+        .out_valid(#TODO#),// this is a single bit
+        .output_RNSpoly(#TODO#)// this is a polynomial with each coefficient in qBBa basis
+    );
+
+
+// mod switch from qBBa to BBa
+// apply individually to D0 D1 and D2
+modSwitch_qBBa_to_BBa qBBatoBBaMODSWITCH (
+    .clk            (clk),
+    .reset          (reset),
+    .in_valid       (#TODO#),
+    .input_RNSpoly  (#TODO#),// this is a polynomial with each coefficient in qBBa basis
+    .out_valid      (#TODO#),
+    .output_RNSpoly (#TODO#)// this is a polynomial with each coefficient in BBa basis
+);
+
+
+// fast b conv exact from BBa to q
+// apply individually to D0 D1 and D2
+fastBConvEx_BBa_to_q BBatoqFASTBCONVEX (
+    .clk            (clk),
+    .reset          (reset),
+    .in_valid       (#TODO#),
+    .input_RNSpoly  (#TODO#),// this is a polynomial with each coefficient in BBa basis
+    .out_valid      (#TODO#),
+    .output_RNSpoly (#TODO#)// this is a polynomial with each coefficient in q basis
+);
+
+
+
+*/
