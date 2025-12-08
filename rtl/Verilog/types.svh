@@ -6,7 +6,7 @@
 // ---------------------------
 
 
-
+`define DEBUG_EN 0
 // NTT
 `define BASE      32'd2
 // Width of each RNS residue (one small prime)

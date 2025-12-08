@@ -5,6 +5,7 @@ import math
 
 from BFV_config import BFVSchemeConfiguration
 from BFV_model import BFVSchemeClient, BFVSchemeServer
+from generic_math import polynomial_RNSmult_constant
 
 random.seed(123)
 np.random.seed(123)
@@ -68,6 +69,17 @@ def generate_test_vectors(n, low=0, high=100):
     pt = np.random.randint(low, high, size=n)
     return v1, v2, pt
 
+
+def as_sv_array(name: str, residuesin, lenname: str):
+    arr = [[element for element in row.residues] for row in residuesin]
+    rows = []
+    for row in arr:
+        rows.append("'{" + ", ".join(str(x) for x in row) + "}")
+    body = ",\n    ".join(rows)
+    return (f"const rns_residue_t {name} [`N_SLOTS][{lenname}] = '{{\n"
+            f"    {body}\n}};\n")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Test BFV homomorphic encryption operations with configurable options.'
@@ -91,6 +103,7 @@ def main():
         'add_cipherplain', 'add_ciphercipher', 'mul_cipherplain', 'mul_ciphercipher', 'all'
     ], default='mul_ciphercipher',
     help='Test operation to perform (or "all" for all)')
+    parser.add_argument('--enable_sensor_proc_test', action='store_true', help='Enable a specific feature')
 
     args = parser.parse_args()
 
@@ -98,31 +111,106 @@ def main():
     config = BFVSchemeConfiguration(args.t, args.qbits, args.n, False)
     client = BFVSchemeClient(config)
     server = BFVSchemeServer(config)
-    # Print current config in verilog format
-    config.print_verilog_format()
-    # Generate test arrays of length n if vectors not supplied
-    if args.vector1 is None or args.vector2 is None or args.plaintext is None:
-        v1, v2, pt = generate_test_vectors(args.n,low=0,high=args.t)
+    if not args.enable_sensor_proc_test:
+        # Print current config in verilog format
+        config.print_verilog_format()
+        # Generate test arrays of length n if vectors not supplied
+        if args.vector1 is None or args.vector2 is None or args.plaintext is None:
+            v1, v2, pt = generate_test_vectors(args.n,low=0,high=args.t)
+        else:
+            # Make sure input vectors have the correct length, resize or pad if necessary
+            def fix_len(v):
+                v = np.array(v)
+                if v.size < args.n:
+                    # Pad with zeros
+                    return np.pad(v, (0, args.n-v.size))
+                elif v.size > args.n:
+                    # Trim the vector
+                    return v[:args.n]
+                else:
+                    return v
+            v1 = fix_len(args.vector1)
+            v2 = fix_len(args.vector2)
+            pt = fix_len(args.plaintext)
+
+        ops = ['add_cipherplain', 'add_ciphercipher', 'mul_cipherplain', 'mul_ciphercipher'] if args.op == 'all' else [args.op]
+
+        for op in ops:
+            run_test(op, client, server, v1, v2, pt, args.t, client.relin_keys)
+    
+    # run the IoT application test (all the ops together)
     else:
-        # Make sure input vectors have the correct length, resize or pad if necessary
-        def fix_len(v):
-            v = np.array(v)
-            if v.size < args.n:
-                # Pad with zeros
-                return np.pad(v, (0, args.n-v.size))
-            elif v.size > args.n:
-                # Trim the vector
-                return v[:args.n]
-            else:
-                return v
-        v1 = fix_len(args.vector1)
-        v2 = fix_len(args.vector2)
-        pt = fix_len(args.plaintext)
+        PRINT_INTERMEDIATES = True
+        PRINT_VERILOGTESTINS = False
+        qlenmacro = "`q_BASIS_LEN"
+        # Generate temperature and humidity readings for n sensors (must be smaller than 257)
+        temp_readings = np.random.randint(15, 36, size=args.n)
+        humidity_readings = np.random.randint(20, 71, size=args.n)
+        # Calibration vector, could be negative for offset  (must be smaller than 257)
+        calibration = np.random.randint(-2, 3, size=args.n)
+        # Encrypt inputs
+        temp_enc = client.encrypt(temp_readings)
+        humidity_enc = client.encrypt(humidity_readings)
+        #
+        # create a test_inputs file for the cpu
+        if PRINT_VERILOGTESTINS:
+            print(as_sv_array("A1__INPUT" , temp_enc[0] , qlenmacro))
+            print(as_sv_array("B1__INPUT", temp_enc[1], qlenmacro))
+            print(as_sv_array("A2__INPUT" , humidity_enc[0] , qlenmacro))
+            print(as_sv_array("B2__INPUT", humidity_enc[1], qlenmacro))
+            #
+            unscaledPT = config.encode_integers_with_RNS(config.batch_encode(calibration))
+            scaledPT = polynomial_RNSmult_constant(constant=config.Delta, polyRNScoeffs=unscaledPT)
+            print(as_sv_array("PLAIN__TEXT" , unscaledPT , qlenmacro))
+            print(as_sv_array("PLAIN__TEXTSCALED_FORADD", scaledPT, qlenmacro))
+        if PRINT_INTERMEDIATES:
+            print("Simulated Temperatures:", temp_readings)
+            print("Simulated Humidity:", humidity_readings)
+            print("Simulated Calibrations:", calibration)
+        # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        # temp + humidity (ctct add)
+        aggregate_score_cipher = server.add_ciphercipher(*temp_enc, *humidity_enc)
+        if PRINT_VERILOGTESTINS:
+            print(as_sv_array("CTCT_ADDA__GOLDRES", aggregate_score_cipher[0], qlenmacro))
+            print(as_sv_array("CTCT_ADDB__GOLDRES", aggregate_score_cipher[1], qlenmacro))
+        if PRINT_INTERMEDIATES:
+            aggregate_score = client.decrypt(*aggregate_score_cipher)
+            print("Aggregate score (decrypted):", aggregate_score)
+            print("Plain reference:", (temp_readings + humidity_readings) % args.t)
+        # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        # Calibrated temperature (ctpt add)
+        calibrated_temp_cipher = server.add_cipherplain(*temp_enc, calibration)
+        if PRINT_VERILOGTESTINS:
+            print(as_sv_array("PTCT_ADDB__GOLDRES", calibrated_temp_cipher[1], qlenmacro))
+        if PRINT_INTERMEDIATES:
+            calibrated_temp = client.decrypt(*calibrated_temp_cipher)
+            print("Calibrated temp (decrypted):", calibrated_temp)
+            print("Plain reference:", (temp_readings + calibration) % args.t)
+        # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        # scale temperature (ctptmul)
+        scale_cipher = server.mul_cipherplain(*temp_enc, calibration)
+        if PRINT_VERILOGTESTINS:
+            print(as_sv_array("PTCT_MULA__GOLDRES", scale_cipher[0], qlenmacro))
+            print(as_sv_array("PTCT_MULB__GOLDRES", scale_cipher[1], qlenmacro))
+        if PRINT_INTERMEDIATES:
+            decrypted_scale_result = client.decrypt(*scale_cipher)
+            print("Scaled temp (decrypted):", decrypted_scale_result)
+            plain_result = (temp_readings * calibration) % args.t
+            print("Plain reference:", plain_result)
+            success = np.all(decrypted_scale_result == plain_result)
+            print(success)
+        # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        # Product temp * humidity (ctctmul)
+        product_cipher = server.mul_ciphercipher(*temp_enc, *humidity_enc, client.relin_keys)
+        if PRINT_VERILOGTESTINS:
+            print(as_sv_array("CTCT_MULA__GOLDRES", product_cipher[0], qlenmacro))
+            print(as_sv_array("CTCT_MULB__GOLDRES", product_cipher[1], qlenmacro))
+        if PRINT_INTERMEDIATES:
+            product_result = client.decrypt(*product_cipher)
+            print("Product (temp * humidity) decrypted:", product_result)
+            print("Plain reference:", (temp_readings * humidity_readings) % args.t)
 
-    ops = ['add_cipherplain', 'add_ciphercipher', 'mul_cipherplain', 'mul_ciphercipher'] if args.op == 'all' else [args.op]
 
-    for op in ops:
-        run_test(op, client, server, v1, v2, pt, args.t, client.relin_keys)
 
 if __name__ == "__main__":
     main()

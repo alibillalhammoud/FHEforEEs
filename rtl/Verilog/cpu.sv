@@ -129,7 +129,7 @@ module cpu (
       dest0_register_index_q    = op.out_a;
       dest1_register_index_q    = op.out_b;
     end else begin
-      // source0_register_index_q = read_idx_0_q; 
+      // source0_register_index_q = read_idx_0_q;
       // source1_register_index_q = read_idx_1_q;
       // source2_register_index_q = read_idx_2_q;
       // source3_register_index_q = read_idx_3_q;
@@ -238,20 +238,22 @@ module cpu (
   //  STAGE 1: Register Access
   // ============================
   always_ff @(posedge clk) begin
-    $display("Stage: %d, Operation: %d, Done: %b",stage, operation_mode, done_out);
-    // $display("%b, %b, %b, %b, %b, %b", done, stage1_op_mode, ntt_1_valid_in, ntt_1_valid_out, fastBconv_in_valid, fastbconv_out_1_valid);
-    $display("Op_a: %d, Op_b: %d, Op_c: %d, Op_d: %d", op_a_q[0][0], op_b_q[0][0], op_c_q[0][0], op_d_q[0][0]);
-    $display("Fu_1: %d, Fu_2: %d", fu_out_1_q[0][0], fu_out_2_q[0][0]);
-    $display("Dest0_poly: %d, Dest1_poly: %d", dest0_poly_q[0][0], dest1_poly_q[0][0]);
-    $display("Wb_0_idx: %d, Wb_1_idx: %d", wb_0_idx_q, wb_1_idx_q);
-    // $display("Mem11: %d, Mem12: %d", u_rf_q.mem[11][0][0], u_rf_q.mem[12][0][0]);
-    // $display("Mem0: %d, Mem1: %d", u_rf_q.mem[0][0][0], u_rf_q.mem[1][0][0]);
-    // $display("Read0_poly: %d, Read1_poly: %d", source0_poly_q[0][0], source1_poly_q[0][0]);
-    // $display("Read_0_idx: %d, Read_1_idx: %d", read_idx_0_q, read_idx_1_q);
-    // $display("NTT_1_Valid: %b, NTT_2_Valid: %b", ntt_1_valid_out, ntt_2_valid_out);
-    // $display("NTT_1_Valid_in: %b, NTT_2_Valid_in: %b", ntt_1_valid_in, ntt_2_valid_in);
-    // $display("fastbconv valid in: %b, doing_fastBconv: %b", fastBconv_in_valid, doing_fastBconv);
-    // $display("fastbconv1 valid out: %b, fastbconv2 valid out: %b ", fastbconv_out_1_valid, modraise_out_2_valid);
+    if(`DEBUG_EN) begin
+      $display("Stage: %d, Operation: %d, Done: %b",stage, operation_mode, done_out);
+      // $display("%b, %b, %b, %b, %b, %b", done, stage1_op_mode, ntt_1_valid_in, ntt_1_valid_out, fastBconv_in_valid, fastbconv_out_1_valid);
+      $display("Op_a: %d, Op_b: %d, Op_c: %d, Op_d: %d", op_a_q[0][0], op_b_q[0][0], op_c_q[0][0], op_d_q[0][0]);
+      $display("Fu_1: %d, Fu_2: %d", fu_out_1_q[0][0], fu_out_2_q[0][0]);
+      $display("Dest0_poly: %d, Dest1_poly: %d", dest0_poly_q[0][0], dest1_poly_q[0][0]);
+      $display("Wb_0_idx: %d, Wb_1_idx: %d", wb_0_idx_q, wb_1_idx_q);
+      // $display("Mem11: %d, Mem12: %d", u_rf_q.mem[11][0][0], u_rf_q.mem[12][0][0]);
+      // $display("Mem0: %d, Mem1: %d", u_rf_q.mem[0][0][0], u_rf_q.mem[1][0][0]);
+      // $display("Read0_poly: %d, Read1_poly: %d", source0_poly_q[0][0], source1_poly_q[0][0]);
+      // $display("Read_0_idx: %d, Read_1_idx: %d", read_idx_0_q, read_idx_1_q);
+      // $display("NTT_1_Valid: %b, NTT_2_Valid: %b", ntt_1_valid_out, ntt_2_valid_out);
+      // $display("NTT_1_Valid_in: %b, NTT_2_Valid_in: %b", ntt_1_valid_in, ntt_2_valid_in);
+      // $display("fastbconv valid in: %b, doing_fastBconv: %b", fastBconv_in_valid, doing_fastBconv);
+      // $display("fastbconv1 valid out: %b, fastbconv2 valid out: %b ", fastbconv_out_1_valid, modraise_out_2_valid);
+    end
 
     if (reset) begin
       dest0_valid_q     <= 1'b0;

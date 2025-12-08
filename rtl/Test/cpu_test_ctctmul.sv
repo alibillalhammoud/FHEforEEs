@@ -21,13 +21,6 @@ module tb_cpu;
   initial clk = 0;
   always #5 clk = ~clk;
 
-  task wait_done_add(input string label);
-    @(posedge clk);
-    op.mode = NO_OP;
-    while (!done_out) @(posedge clk);
-    @(posedge clk); // allow writeback to settle
-  endtask
-
   task wait_done_mul(input string label);
     int cycle;
     cycle = 0;
@@ -85,6 +78,7 @@ module tb_cpu;
     CT2_A = A2__INPUT;
     CT2_B = B2__INPUT;
     PT = PLAIN__TEXT;
+    //SCALED_PT = PLAIN__TEXTSCALED_FORADD;
 
     // Initialize signals
     op = '0;
@@ -110,7 +104,7 @@ module tb_cpu;
     u_cpu.u_rf_q.mem[1] = CT1_B;
     u_cpu.u_rf_q.mem[2] = CT2_A;
     u_cpu.u_rf_q.mem[3] = CT2_B;
-    u_cpu.u_rf_q.mem[4] = PLAIN__TEXTSCALED_FORADD;
+    u_cpu.u_rf_q.mem[4] = PLAIN__TEXT;
 
     $display("Register file preloaded:");
     $display("  REG[0] (CT1.A): sample value = %0d", u_cpu.u_rf_q.mem[0][0][0]);
@@ -120,107 +114,39 @@ module tb_cpu;
     $display("  REG[4] (PT):    sample value = %0d\n", u_cpu.u_rf_q.mem[4][0][0]);
 
     // =======================================================
-    // TEST 1: CT-CT ADD
-    // out = CT1 + CT2
-    // Expected: outA = CT1.A + CT2.A, outB = CT1.B + CT2.B
+    // TEST CT-CT MUL
     // =======================================================
-    $display("==== TEST 1: CT-CT ADD ====");
-    
-    op.mode   = OP_CT_CT_ADD;
-    op.idx1_a = 0; // CT1.A
-    op.idx1_b = 1; // CT1.B
-    op.idx2_a = 2; // CT2.A
-    op.idx2_b = 3; // CT2.B
-    op.out_a  = 5; // result.A stored in reg[5]
-    op.out_b  = 6; // result.B stored in reg[6]
+    $display("==== TEST 4: CT-CT MUL ====");
 
-    wait_done_add("CT-CT ADD");
-
-    // Read results
-    outA = u_cpu.u_rf_q.mem[5];
-    outB = u_cpu.u_rf_q.mem[6];
-
-    // Compare results
-    gold_A = CTCT_ADDA__GOLDRES;
-    gold_B = CTCT_ADDB__GOLDRES;
-    match_A = compare_polys("CT-CT ADD (A)", outA, CTCT_ADDA__GOLDRES);
-    match_B = compare_polys("CT-CT ADD (B)", outB, CTCT_ADDB__GOLDRES);
-
-    if (match_A && match_B) begin
-      $display("[PASS] CT-CT ADD test passed!\n");
-    end else begin
-      $display("[FAIL] CT-CT ADD test failed!\n");
-    end
-
-    // =======================================================
-    // TEST 2: CT-PT ADD
-    // CT_out.A = CT1.A (unchanged)
-    // CT_out.B = CT1.B + PT
-    // =======================================================
-    $display("==== TEST 2: CT-PT ADD ====");
-    
-    op.mode   = OP_CT_PT_ADD;
-    op.idx1_a = 0; // CT1.A (passes through)
-    op.idx1_b = 1; // CT1.B (gets PT added)
-    op.idx2_a = 0; // unused for PT add (A passthrough)
-    op.idx2_b = 4; // PT (to be added to B)
-    op.out_a  = 7; // result.A stored in reg[7]
-    op.out_b  = 8; // result.B stored in reg[8]
-
-    wait_done_add("CT-PT ADD");
-
-    // Read results
-    outA = u_cpu.u_rf_q.mem[7];
-    outB = u_cpu.u_rf_q.mem[8];
-    // A should pass through unchanged
-    gold_A = CT1_A;
-    gold_B = PTCT_ADDB__GOLDRES;
-    // Compare results
-    match_A = compare_polys("CT-PT ADD (A)", outA, gold_A);
-    match_B = compare_polys("CT-PT ADD (B)", outB, gold_B);
-
-    if (match_A && match_B) begin
-      $display("[PASS] CT-PT ADD test passed!\n");
-    end else begin
-      $display("[FAIL] CT-PT ADD test failed!\n");
-    end
-
-    // =======================================================
-    // TEST 3: CT-PT MUL
-    // CT_out.A = CT1.A * PT
-    // CT_out.B = CT1.B * PT
-    // (per-slot, per-prime multiplication mod q_BASIS[prime])
-    // =======================================================
-    $display("==== TEST 3: CT-PT MUL ====");
-    u_cpu.u_rf_q.mem[4] = PLAIN__TEXT;
-    
-    op.mode   = OP_CT_PT_MUL;
+    op.mode   = OP_CT_CT_MUL;
     op.idx1_a = 0;  // CT1.A
     op.idx1_b = 1;  // CT1.B
-    op.idx2_a = 0;  // unused in your controller for MUL path
-    op.idx2_b = 4;  // PT
+    op.idx2_a = 2;  // CT2.A
+    op.idx2_b = 3;  // CT2.B
     op.out_a  = 9;  // result.A -> REG[9]
     op.out_b  = 10; // result.B -> REG[10]
 
-    $display("[T3] Issued CT-PT MUL: idx1_a=%0d idx1_b=%0d idx2_b(PT)=%0d out_a=%0d out_b=%0d",
-             op.idx1_a, op.idx1_b, op.idx2_b, op.out_a, op.out_b);
+    $display("[T4] Issued CT-CT MUL: idx1_a=%0d idx1_b=%0d idx2_a=%0d idx2_b=%0d out_a=%0d out_b=%0d",
+             op.idx1_a, op.idx1_b, op.idx2_a, op.idx2_b, op.out_a, op.out_b);
 
-    wait_done_mul("CT-PT MUL");
+    wait_done_mul("CT-CT MUL");
 
-    // Read back results from regfile
+    // Read DUT outputs
     outA = u_cpu.u_rf_q.mem[9];
     outB = u_cpu.u_rf_q.mem[10];
 
-    // Compare results
-    match_A = compare_polys("CT-PT MUL (A)", outA, PTCT_MULA__GOLDRES);
-    match_B = compare_polys("CT-PT MUL (B)", outB, PTCT_MULB__GOLDRES);
+    // Golden from header
+    gold_A = CTCT_MULA__GOLDRES;
+    gold_B = CTCT_MULB__GOLDRES;
+    match_A = compare_polys("CT-CT MUL (A)", outA, gold_A);
+    match_B = compare_polys("CT-CT MUL (B)", outB, gold_B);
 
     if (match_A && match_B) begin
-      $display("[PASS] CT-PT MUL test passed!\n");
+      $display("[PASS] CT-CT MUL test passed!");
     end else begin
-      $display("[FAIL] CT-PT MUL test failed!\n");
+      $display("[FAIL] CT-CT MUL test failed!");
     end
-    
+
     // =======================================================
     // Summary
     // =======================================================
