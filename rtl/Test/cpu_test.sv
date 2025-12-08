@@ -170,22 +170,22 @@ module tb_cpu;
     
     // Initialize test vectors with simple patterns
     
-    // foreach(CT1_A[slot]) begin
-    //   foreach(CT1_A[slot][prime]) begin
-    //     CT1_A[slot][prime] = 5;
-    //     CT1_B[slot][prime] = 10;
-    //     CT2_A[slot][prime] = 7;
-    //     CT2_B[slot][prime] = 3;
-    //     PT[slot][prime]    = 4;
-    //   end
-    // end
-    
+    foreach(CT1_A[slot]) begin
+      foreach(CT1_A[slot][prime]) begin
+        CT1_A[slot][prime] = 5;
+        CT1_B[slot][prime] = 10;
+        CT2_A[slot][prime] = 7;
+        CT2_B[slot][prime] = 3;
+        PT[slot][prime]    = 4;
+      end
+    end
+    /*
     CT1_A = A1__INPUT;
     CT1_B = B1__INPUT;
     CT2_A = A2__INPUT;
     CT2_B = B2__INPUT;
     PT = B2__INPUT;
-    
+    */
 
     // Initialize signals
     op = '0;

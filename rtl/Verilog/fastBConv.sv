@@ -43,9 +43,9 @@ module fastBConvSingle #(
     generate
         // all steps are indpendent/parallel
         for (i = 0; i < IN_BASIS_LEN; ++i) begin : GEN_A_COEFFS
-            //assign wideINBASIS_forfastmod[i] = IN_BASIS[i];
+            assign wideINBASIS_forfastmod[i] = IN_BASIS[i];
             assign a_re_nomod[i] = input_RNSint[i] * ZiLUT[i];
-            assign n_a_res[i] = a_re_nomod[i] % IN_BASIS[i];
+            assign n_a_res[i] = a_re_nomod[i] % wideINBASIS_forfastmod[i];
         end
     endgenerate
     
@@ -59,7 +59,7 @@ module fastBConvSingle #(
     generate
         // all steps are indpendent/parallel
         for (j = 0; j < OUT_BASIS_LEN; j++) begin : PSUM_GEN
-            //assign wideOUTBASIS_forfastmod[j] = OUT_BASIS[j];
+            assign wideOUTBASIS_forfastmod[j] = OUT_BASIS[j];
             // multiplication needs a real mod // % IN_BASIS_LEN
             assign psum_nomod[j] = a_res[current_state] * YMODB[j][current_state];
             assign psum[j] = psum_nomod[j] % OUT_BASIS[j];

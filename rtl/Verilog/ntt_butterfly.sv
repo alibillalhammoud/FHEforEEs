@@ -4,7 +4,7 @@
 // =====================================================================
 module ntt_butterfly_2stage #(
     parameter W = 32,    // Data width
-    parameter Q = 40961  // Modulus Q
+    parameter logic [2*W-1:0] Q = 40961  // Modulus Q
 ) (
     input  logic clk,
     input  logic reset,

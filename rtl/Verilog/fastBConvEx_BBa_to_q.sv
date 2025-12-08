@@ -28,10 +28,6 @@ module fastBConvEx_BBa_to_q (
             for(j = 0; j < `B_BASIS_LEN; ++j) begin : GETBMODULIS
                 assign xB_RNSpoly[k][j] = input_RNSpoly[k][j];
             end
-            // TODO signed_xBa_RNSpoly should be a register and latch when in_valid
-            //for(j = 0; j < `Ba_BASIS_LEN; ++j) begin : GETBaMODULIS
-            //    assign signed_xBa_RNSpoly[k][j] = {1'b0, input_RNSpoly[k][j+`B_BASIS_LEN]};
-            //end
         end
     endgenerate
     //
@@ -51,7 +47,8 @@ module fastBConvEx_BBa_to_q (
         .in_valid(in_valid),
         .input_RNSpoly(xB_RNSpoly),
         .out_valid(fastBConv_BtoBa_outvalid),
-        .output_RNSpoly(xB_in_Ba)
+        .output_RNSpoly(xB_in_Ba),
+        .doing_fastBconv()//unused
     );
     // create signed version of xB_in_Ba
     logic signed [`RNS_PRIME_BITS:0] signed_xB_in_Ba[`N_SLOTS];
@@ -78,7 +75,8 @@ module fastBConvEx_BBa_to_q (
         .in_valid(in_valid),
         .input_RNSpoly(xB_RNSpoly),
         .out_valid(fastBConv_Btoq_outvalid),
-        .output_RNSpoly(xB_in_q)
+        .output_RNSpoly(xB_in_q),
+        .doing_fastBconv()//unused
     );
     // create signed version of xB_in_q
     logic signed [`RNS_PRIME_BITS:0] signed_xB_in_q[`N_SLOTS][`q_BASIS_LEN];
@@ -103,11 +101,12 @@ module fastBConvEx_BBa_to_q (
     wire wide_rns_residue_t gamma_nomod [`N_SLOTS];
     wire rns_residue_t gamma_nocenter [`N_SLOTS];
     wire signed [`RNS_PRIME_BITS:0] gamma_centered[`N_SLOTS];
+    localparam wide_rns_residue_t Ba_BASIS0_widthextfastmod = Ba_BASIS[0];
     localparam logic signed [`RNS_PRIME_BITS:0] Ba_BASIS0_signed = {1'b0,Ba_BASIS[0]};
     generate
         for(k = 0; k<`N_SLOTS; ++k) begin
             assign gamma_nomod[k] = temp[k]*binv_Ba_MOD_Ba[0];
-            assign gamma_nocenter[k]=gamma_nomod[k]%Ba_BASIS[0];
+            assign gamma_nocenter[k]=gamma_nomod[k]%Ba_BASIS0_widthextfastmod;
             assign gamma_centered[k] = (gamma_nocenter[k]>(Ba_BASIS[0]/2)) ? gamma_nocenter[k]-Ba_BASIS0_signed : gamma_nocenter[k];
         end
     endgenerate
@@ -117,9 +116,11 @@ module fastBConvEx_BBa_to_q (
     logic signed [`RNS_PRIME_BITS:0] pl_gamma_centered[`N_SLOTS];
     // will also require the signed version of the q basis
     logic signed [`RNS_PRIME_BITS:0] local_qBASIS_signed[`q_BASIS_LEN];
+    wire signed [(2*`RNS_PRIME_BITS)+1:0] local_qBASIS_signed_wextfastmod[`q_BASIS_LEN];
     generate
         for(j = 0; j<`q_BASIS_LEN; ++j) begin
             assign local_qBASIS_signed[j] = {1'b0, q_BASIS[j]};
+            assign local_qBASIS_signed_wextfastmod[j] = q_BASIS[j];
         end
     endgenerate
     // result_residues = (xB_to_q - gamma * b_mod_q) % target_basis (q)
@@ -132,7 +133,7 @@ module fastBConvEx_BBa_to_q (
                 assign rr_tmpvar1[k][j] = pl_gamma_centered[k] * signed_intb_MOD_q[j];
                 assign rr_tmpvar2[k][j] = signed_xB_in_q[k][j] - rr_tmpvar1[k][j];
                 // perform modulus operation (truncates to RNS_PRIME_BITS+1 bits)
-                assign rr_tmpvar3_mod[k][j] = rr_tmpvar2[k][j]%local_qBASIS_signed[j];
+                assign rr_tmpvar3_mod[k][j] = rr_tmpvar2[k][j]%local_qBASIS_signed_wextfastmod[j];
                 // convert cpp/verilog style mod to an actual math mod, also truncate to residue bits
                 assign output_RNSpoly[k][j] = rr_tmpvar3_mod[k][j][`RNS_PRIME_BITS] ? rr_tmpvar3_mod[k][j]+local_qBASIS_signed[j] : rr_tmpvar3_mod[k][j];
             end

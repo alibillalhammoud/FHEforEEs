@@ -1,7 +1,7 @@
 module ntt_block_radix2_pipelined #(
     parameter W           = 32,
     parameter N           = 8,
-    parameter Modulus_Q   = 241,
+    parameter logic [2*W-1:0] Modulus_Q   = 241,
     parameter OMEGA       = 30,
     parameter OMEGA_INV   = 233
 ) (

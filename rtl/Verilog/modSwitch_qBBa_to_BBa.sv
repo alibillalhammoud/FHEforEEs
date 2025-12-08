@@ -47,7 +47,8 @@ module modSwitch_qBBa_to_BBa (
         .in_valid(in_valid),
         .input_RNSpoly(to_be_dropped_RNSpoly),
         .out_valid(fastBConv_outvalid),
-        .output_RNSpoly(xhatf_fastBconv_output_RNSpoly)
+        .output_RNSpoly(xhatf_fastBconv_output_RNSpoly),
+        .doing_fastBconv()//unused
     );
     // signed version of fastBConv output (convert to signed by adding 0 to the front)
     wire signed [`RNS_PRIME_BITS:0] signed_xhatf_fastBconv_RNSpoly [`N_SLOTS][`BBa_BASIS_LEN];
@@ -59,6 +60,7 @@ module modSwitch_qBBa_to_BBa (
         end
     endgenerate
 
+    // create verilog mod friendly length (must pre extended the widths)
     // finish the mod switch in one step combinationally (output of fastBConv is a reg, so this takes another cycle)
     // TODO a better approach we would send the fastBConv output to the reg file and do this after a reg (to avoid glitches)
     wire signed [`RNS_PRIME_BITS:0] delta_signed [`N_SLOTS][`BBa_BASIS_LEN];
