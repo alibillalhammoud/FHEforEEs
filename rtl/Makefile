@@ -16,9 +16,6 @@ DUT_CPU = \
     verilog/fastBConvEx_BBa_to_q.sv
 TB_CPU  = test/cpu_test.sv
 
-DUT_RF  = verilog/regfile.sv
-TB_RF   = test/tb_regfile.sv
-
 # base conversion
 DUT_FASTBCONV = verilog/fastBConv.sv
 TB_FASTBCONV  = test/tb_fastBConv.sv
@@ -39,14 +36,18 @@ TB_MODSWITCH  = test/tb_modSwitch_qBBa_to_BBa.sv
 DUT_FASTBCONVEX = verilog/fastBConvEx_BBa_to_q.sv verilog/fastBConv.sv
 TB_FASTBCONVEX  = test/tb_fastBConvEx_BBa_to_q.sv
 
+# ct ct mul
+TB_CPU_CTCTMUL = test/cpu_test_ctctmul.sv
+SIM_CPU_CTCTMUL = $(SIMDIR)/simv_cpu_ctctmul
+
 # ---- Simulation targets ----
 SIM_CPU          = $(SIMDIR)/simv_cpu
-SIM_RF           = $(SIMDIR)/simv_regfile
 SIM_FASTBCONV    = $(SIMDIR)/simv_fastBConv
 SIM_NTT_FULL     = $(SIMDIR)/simv_ntt_full
 SIM_NTT_BIG      = $(SIMDIR)/simv_ntt_big
 SIM_MODSWITCH    = $(SIMDIR)/simv_modSwitch
 SIM_FASTBCONVEX  = $(SIMDIR)/simv_fastBConvEx
+SIM_CPU_CTCTMUL = $(SIMDIR)/simv_cpu_ctctmul
 
 # ---- Default ----
 .PHONY: all
@@ -96,16 +97,15 @@ $(SIM_MODSWITCH): $(DUT_MODSWITCH) $(TB_MODSWITCH)
 $(SIM_FASTBCONVEX): $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
 	$(VCS_SIM)
 
+$(SIM_CPU_CTCTMUL): $(DUT_CPU) $(TB_CPU_CTCTMUL)
+	$(VCS_SIM)
+
 # ---- DVE debugger support ----
-.PHONY: dve-cpu dve-regfile dve-fastBConv dve-ntt-full dve-ntt-big dve-modSwitch dve-fastBConvEx
+.PHONY: dve-cpu dve-fastBConv dve-ntt-full dve-ntt-big dve-modSwitch dve-fastBConvEx dve-cpu-ctctmul
 
 $(SIMDIR)/dve_cpu: $(DUT_CPU) $(TB_CPU)
 	$(DVE_SIM)
 dve-cpu: $(SIMDIR)/dve_cpu
-
-$(SIMDIR)/dve_regfile: $(DUT_RF) $(TB_RF)
-	$(DVE_SIM)
-dve-regfile: $(SIMDIR)/dve_regfile
 
 $(SIMDIR)/dve_fastBConv: $(DUT_FASTBCONV) $(TB_FASTBCONV)
 	$(DVE_SIM)
@@ -127,17 +127,21 @@ $(SIMDIR)/dve_fastBConvEx: $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
 	$(DVE_SIM)
 dve-fastBConvEx: $(SIMDIR)/dve_fastBConvEx
 
+$(SIMDIR)/dve_cpu_ctctmul: $(DUT_CPU) $(TB_CPU_CTCTMUL)
+	$(DVE_SIM)
+dve-cpu-ctctmul: $(SIMDIR)/dve_cpu_ctctmul
+
 # ---- Run commands ----
-.PHONY: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx
-run-regfile:      $(SIM_RF);          $(SIM_RF)
+.PHONY: run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx run-cpu-ctctmul
 run-cpu:          $(SIM_CPU);         $(SIM_CPU)
 run-fastBConv:    $(SIM_FASTBCONV);   $(SIM_FASTBCONV)
 run-ntt-full:     $(SIM_NTT_FULL);    $(SIM_NTT_FULL)
 run-ntt-big:      $(SIM_NTT_BIG);     $(SIM_NTT_BIG)
 run-modSwitch:    $(SIM_MODSWITCH);   $(SIM_MODSWITCH)
 run-fastBConvEx:  $(SIM_FASTBCONVEX); $(SIM_FASTBCONVEX)
+run-cpu-ctctmul:  $(SIM_CPU_CTCTMUL); $(SIM_CPU_CTCTMUL)
 
-run-all: run-regfile run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx
+run-all: run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx run-cpu-ctctmul
 
 # ---- Clean ----
 .PHONY: clean
