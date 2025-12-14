@@ -47,7 +47,8 @@ module ntt_tb;
         
         .Data_in(Data_in),
         .Data_out(Data_out),
-        .data_valid_out(data_valid_out) // Output valid from DUT
+        .data_valid_out(data_valid_out), // Output valid from DUT
+        .mode_out()// unused
     );
 
     // =================================================================
@@ -95,13 +96,13 @@ module ntt_tb;
         @(posedge clk); 
         $display("[%0t] Driving Data Valid...", $time);
         
-        data_valid_in <= 1'b1; // Assert valid
+        data_valid_in = 1'b1; // Assert valid
         start_time    = $time; // Record start time
         
         // Hold valid_in for one cycle (single burst)
         // To test pipeline throughput, keep valid_in high and vary Data_in every cycle
         @(posedge clk); 
-        data_valid_in <= 1'b0; 
+        data_valid_in = 1'b0; 
 
         // --- Wait for result ---
         // Use wait or a while-loop to wait for output valid

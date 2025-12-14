@@ -1,4 +1,6 @@
 `include "types.svh"
+// verilator lint_off UNOPTFLAT
+// verilator lint_off LATCH
 
 module cpu (
   input  logic clk,
@@ -176,6 +178,7 @@ module cpu (
     .dest1_poly             (dest1_poly_q)
   );
 
+  logic source0_valid_b, source1_valid_b, source2_valid_b, source3_valid_b;
   // B-basis bank
   regfile #(
     .NPRIMES(`B_BASIS_LEN)
@@ -205,6 +208,7 @@ module cpu (
     .dest1_poly             (dest1_poly_b)
   );
 
+  logic source0_valid_ba, source1_valid_ba, source2_valid_ba, source3_valid_ba;
   // Ba-basis bank
   regfile #(
     .NPRIMES(`Ba_BASIS_LEN)
@@ -259,19 +263,19 @@ module cpu (
       dest0_valid_q     <= 1'b0;
       dest1_valid_q     <= 1'b0;
       stage1_valid      <= 1'b0;
-      stage1_src0_q     <= '{default: '0};
-      stage1_src1_q     <= '{default: '0};
-      stage1_src2_q     <= '{default: '0};
-      stage1_src3_q     <= '{default: '0};
+      stage1_src0_q     <= '{default: q_len_ZERO};
+      stage1_src1_q     <= '{default: q_len_ZERO};
+      stage1_src2_q     <= '{default: q_len_ZERO};
+      stage1_src3_q     <= '{default: q_len_ZERO};
       stage1_op_mode    <= NO_OP;
       stage1_dest0_idx  <= '0;
       stage1_dest1_idx  <= '0;
-      dest0_poly_q      <= '{default: '0};
-      dest1_poly_q      <= '{default: '0};
-      dest0_poly_b      <= '{default: '0};   
-      dest1_poly_b      <= '{default: '0};   
-      dest0_poly_ba     <= '{default: '0};   
-      dest1_poly_ba     <= '{default: '0};   
+      dest0_poly_q      <= '{default: q_len_ZERO};
+      dest1_poly_q      <= '{default: q_len_ZERO};
+      // dest0_poly_b      <= '{default: '0};   
+      // dest1_poly_b      <= '{default: '0};   
+      // dest0_poly_ba     <= '{default: '0};   
+      // dest1_poly_ba     <= '{default: '0};   
       done_out          <= '0;
       stage             <= '0;
     end else begin
@@ -479,7 +483,8 @@ module cpu (
         .in_valid     (fastBconv_in_valid & ~doing_fastBconv),
         .input_RNSpoly(op_c_q),           // ct1.B in q basis
         .out_valid    (modraise_out_2_valid),
-        .output_RNSpoly(fastBconv_out_2)
+        .output_RNSpoly(fastBconv_out_2),
+        .doing_fastBconv()//unused
   );
 
     // D0
@@ -504,6 +509,7 @@ module cpu (
       end
     end
 
+  logic modSwitch_out_valid_1;
   modSwitch_qBBa_to_BBa modSwitch1 (
       .clk            (clk),
       .reset          (reset),
@@ -562,12 +568,12 @@ module cpu (
   //  Controller
   // ============================
   always_comb begin
-    op_a_q     = '{default: '0};
-    op_b_q     = '{default: '0};
-    op_c_q     = '{default: '0};
-    op_d_q     = '{default: '0};
-    fu_out_1_q = '{default: '0};
-    fu_out_2_q = '{default: '0};
+    op_a_q     = '{default: q_len_ZERO};
+    op_b_q     = '{default: q_len_ZERO};
+    op_c_q     = '{default: q_len_ZERO};
+    op_d_q     = '{default: q_len_ZERO};
+    fu_out_1_q = '{default: q_len_ZERO};
+    fu_out_2_q = '{default: q_len_ZERO};
     wb_0_q     = 1'b0;
     wb_1_q     = 1'b0;
     done       = 1'b0;
@@ -612,7 +618,7 @@ module cpu (
 
         OP_CT_PT_ADD: begin
           op_a_q     = stage1_src0_q;      // CT1.A
-          op_b_q     = '{default: '0};     // 0
+          op_b_q     = '{default: q_len_ZERO};     // 0
           op_c_q     = stage1_src1_q;      // CT1.B
           op_d_q     = stage1_src3_q;      // scaled PT
           fu_out_1_q = add_out_1;
@@ -719,6 +725,10 @@ module cpu (
               wb_1_q     = 1;
               controller_wb_1_idx_q = stage1_dest1_idx;
               done       = 1;
+            end
+
+            default: begin
+              $error("FATAL: Unhandled case value");
             end
           endcase
         end
@@ -1166,6 +1176,10 @@ module cpu (
               wb_1_q = 1'b1;
               controller_wb_1_idx_q = `REG_NPOLY'd10;
               done = 1;
+            end
+
+            default: begin
+              $error("FATAL: Unhandled case value");
             end
 
           endcase

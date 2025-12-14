@@ -1,19 +1,27 @@
 # ---- Directories ----
 SIMDIR = build
-LIB    = /usr/caen/misc/class/eecs470/lib/verilog/lec25dscc25.v
+OBJDIR = $(SIMDIR)/obj_dir
+
+# ---- Verilator flags ----
+VERILATOR = verilator
+VERILATOR_FLAGS = --binary -j 0 --timing --trace --timescale 1ns/1ps +incdir+verilog +incdir+test \
+	-Wno-WIDTHEXPAND \
+	-Wno-WIDTHTRUNC \
+	-Wno-SIDEEFFECT
+#	-Wall
 
 # ---- DUT / Testbench definitions ----
 # CPU + regfile
 DUT_CPU = \
-    verilog/cpu.sv \
-    verilog/regfile.sv \
-    verilog/adder.sv \
-    verilog/mult.sv \
-    verilog/ntt_full.sv \
-    verilog/ntt_butterfly.sv \
-    verilog/modSwitch_qBBa_to_BBa.sv \
-    verilog/fastBConv.sv \
-    verilog/fastBConvEx_BBa_to_q.sv
+	verilog/cpu.sv \
+	verilog/regfile.sv \
+	verilog/adder.sv \
+	verilog/mult.sv \
+	verilog/ntt_full.sv \
+	verilog/ntt_butterfly.sv \
+	verilog/modSwitch_qBBa_to_BBa.sv \
+	verilog/fastBConv.sv \
+	verilog/fastBConvEx_BBa_to_q.sv
 TB_CPU  = test/cpu_test.sv
 
 # base conversion
@@ -25,9 +33,6 @@ DUT_NTT_CORE = verilog/ntt_butterfly.sv verilog/ntt_full.sv
 TB_NTT_FULL  = test/tb_full_mult.sv
 TB_NTT_BIG   = test/tb_big.sv
 
-# Multipliers
-DUT_MULT = verilog/mult.sv
-
 # ModSwitch  (qBBa -> BBa)
 DUT_MODSWITCH = verilog/modSwitch_qBBa_to_BBa.sv verilog/fastBConv.sv
 TB_MODSWITCH  = test/tb_modSwitch_qBBa_to_BBa.sv
@@ -38,112 +43,71 @@ TB_FASTBCONVEX  = test/tb_fastBConvEx_BBa_to_q.sv
 
 # ct ct mul
 TB_CPU_CTCTMUL = test/cpu_test_ctctmul.sv
-SIM_CPU_CTCTMUL = $(SIMDIR)/simv_cpu_ctctmul
 
 # ---- Simulation targets ----
-SIM_CPU          = $(SIMDIR)/simv_cpu
-SIM_FASTBCONV    = $(SIMDIR)/simv_fastBConv
-SIM_NTT_FULL     = $(SIMDIR)/simv_ntt_full
-SIM_NTT_BIG      = $(SIMDIR)/simv_ntt_big
-SIM_MODSWITCH    = $(SIMDIR)/simv_modSwitch
-SIM_FASTBCONVEX  = $(SIMDIR)/simv_fastBConvEx
-SIM_CPU_CTCTMUL = $(SIMDIR)/simv_cpu_ctctmul
+SIM_CPU          = $(SIMDIR)/cpu
+SIM_FASTBCONV    = $(SIMDIR)/fastBConv
+SIM_NTT_FULL     = $(SIMDIR)/ntt_full
+SIM_NTT_BIG      = $(SIMDIR)/ntt_big
+SIM_MODSWITCH    = $(SIMDIR)/modSwitch
+SIM_FASTBCONVEX  = $(SIMDIR)/fastBConvEx
+SIM_CPU_CTCTMUL  = $(SIMDIR)/cpu_ctctmul
 
 # ---- Default ----
 .PHONY: all
 all: run-all
 
-# ---- Generic VCS simulation pattern ----
-define VCS_SIM
-@mkdir -p $(SIMDIR) $(SIMDIR)/csrc
-module load vcs/2023.12-SP2-1 || true
-vcs -sverilog -full64 -timescale=1ns/1ps \
-    +incdir+verilog +incdir+test \
-    -Mdir=$(SIMDIR)/csrc -o $@ \
-    -debug_access+all +v2k \
-    $^
+define VERILATOR_SIM
+@mkdir -p $(SIMDIR)
+$(VERILATOR) $(VERILATOR_FLAGS) \
+	--Mdir $(OBJDIR) \
+	-o $(abspath $@) \
+	$^
 endef
 
-# ---- Generic DVE (waveform view) simulation pattern ----
-define DVE_SIM
-@mkdir -p $(SIMDIR) $(SIMDIR)/csrc
-module load vcs/2023.12-SP2-1 || true
-vcs -sverilog -full64 -timescale=1ns/1ps \
-    +incdir+verilog +incdir+test \
-    -Mdir=$(SIMDIR)/csrc -o $@ \
-    -R -gui -debug_access+all -kdb +v2k \
-    $^
-endef
-
-# ---- Simulation build rules ----
+# ---- Build rules ----
 $(SIM_CPU): $(DUT_CPU) $(TB_CPU)
-	$(VCS_SIM)
-
-$(SIM_RF): $(DUT_RF) $(TB_RF)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_FASTBCONV): $(DUT_FASTBCONV) $(TB_FASTBCONV)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_NTT_FULL): $(DUT_NTT_CORE) $(TB_NTT_FULL)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_NTT_BIG): $(DUT_NTT_CORE) $(TB_NTT_BIG)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_MODSWITCH): $(DUT_MODSWITCH) $(TB_MODSWITCH)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_FASTBCONVEX): $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
-	$(VCS_SIM)
+	$(VERILATOR_SIM)
 
 $(SIM_CPU_CTCTMUL): $(DUT_CPU) $(TB_CPU_CTCTMUL)
-	$(VCS_SIM)
-
-# ---- DVE debugger support ----
-.PHONY: dve-cpu dve-fastBConv dve-ntt-full dve-ntt-big dve-modSwitch dve-fastBConvEx dve-cpu-ctctmul
-
-$(SIMDIR)/dve_cpu: $(DUT_CPU) $(TB_CPU)
-	$(DVE_SIM)
-dve-cpu: $(SIMDIR)/dve_cpu
-
-$(SIMDIR)/dve_fastBConv: $(DUT_FASTBCONV) $(TB_FASTBCONV)
-	$(DVE_SIM)
-dve-fastBConv: $(SIMDIR)/dve_fastBConv
-
-$(SIMDIR)/dve_ntt_full: $(DUT_NTT_CORE) $(TB_NTT_FULL)
-	$(DVE_SIM)
-dve-ntt-full: $(SIMDIR)/dve_ntt_full
-
-$(SIMDIR)/dve_ntt_big: $(DUT_NTT_CORE) $(TB_NTT_BIG)
-	$(DVE_SIM)
-dve-ntt-big: $(SIMDIR)/dve_ntt_big
-
-$(SIMDIR)/dve_modSwitch: $(DUT_MODSWITCH) $(TB_MODSWITCH)
-	$(DVE_SIM)
-dve-modSwitch: $(SIMDIR)/dve_modSwitch
-
-$(SIMDIR)/dve_fastBConvEx: $(DUT_FASTBCONVEX) $(TB_FASTBCONVEX)
-	$(DVE_SIM)
-dve-fastBConvEx: $(SIMDIR)/dve_fastBConvEx
-
-$(SIMDIR)/dve_cpu_ctctmul: $(DUT_CPU) $(TB_CPU_CTCTMUL)
-	$(DVE_SIM)
-dve-cpu-ctctmul: $(SIMDIR)/dve_cpu_ctctmul
+	$(VERILATOR_SIM)
 
 # ---- Run commands ----
 .PHONY: run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx run-cpu-ctctmul
-run-cpu:          $(SIM_CPU);         $(SIM_CPU)
-run-fastBConv:    $(SIM_FASTBCONV);   $(SIM_FASTBCONV)
-run-ntt-full:     $(SIM_NTT_FULL);    $(SIM_NTT_FULL)
-run-ntt-big:      $(SIM_NTT_BIG);     $(SIM_NTT_BIG)
-run-modSwitch:    $(SIM_MODSWITCH);   $(SIM_MODSWITCH)
-run-fastBConvEx:  $(SIM_FASTBCONVEX); $(SIM_FASTBCONVEX)
-run-cpu-ctctmul:  $(SIM_CPU_CTCTMUL); $(SIM_CPU_CTCTMUL)
 
-run-all: run-cpu run-fastBConv run-ntt-full run-ntt-big run-modSwitch run-fastBConvEx run-cpu-ctctmul
+run-cpu:         $(SIM_CPU)         ; ./$(SIM_CPU)
+run-fastBConv:   $(SIM_FASTBCONV)   ; ./$(SIM_FASTBCONV)
+run-ntt-full:    $(SIM_NTT_FULL)    ; ./$(SIM_NTT_FULL)
+run-ntt-big:     $(SIM_NTT_BIG)     ; ./$(SIM_NTT_BIG)
+run-modSwitch:   $(SIM_MODSWITCH)   ; ./$(SIM_MODSWITCH)
+run-fastBConvEx: $(SIM_FASTBCONVEX) ; ./$(SIM_FASTBCONVEX)
+run-cpu-ctctmul: $(SIM_CPU_CTCTMUL) ; ./$(SIM_CPU_CTCTMUL)
+
+run-all: \
+	run-cpu \
+	run-fastBConv \
+	run-ntt-full \
+	run-ntt-big \
+	run-modSwitch \
+	run-fastBConvEx \
+	run-cpu-ctctmul
 
 # ---- Clean ----
 .PHONY: clean
 clean:
-	rm -rf $(SIMDIR) simv simv.daidir csrc ucli.key *.vpd *.vcd
+	rm -rf $(SIMDIR) *.vcd *.fst

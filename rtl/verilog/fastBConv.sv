@@ -70,6 +70,7 @@ module fastBConvSingle #(
     endgenerate
 
     assign out_valid = (current_state==IN_BASIS_LEN);
+    wire n_out_valid;
     assign n_out_valid = ((current_state+1)==IN_BASIS_LEN);
     // sequential logic / state machine controller
     assign doing_fastBconv = compute_is_active;

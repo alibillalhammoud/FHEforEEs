@@ -2,7 +2,7 @@
 `include "types.svh"
 `include "ct_test_inputs.svh"
 
-module tb_fastBConvSingle;
+module tb_fastBConv;
 
 localparam int unsigned IN_BASIS_LEN = `q_BASIS_LEN;
 localparam int unsigned OUT_BASIS_LEN = `qBBa_BASIS_LEN;
@@ -50,7 +50,8 @@ fastBConvSingle #(
     .in_valid (in_valid),
     .input_RNSint (input_RNSint),
     .out_valid (out_valid),
-    .output_RNSint (output_RNSint)
+    .output_RNSint (output_RNSint),
+    .doing_fastBconv()//unused
 );
 
 fastBConv #(
@@ -66,7 +67,8 @@ fastBConv #(
     .in_valid (in_valid),
     .input_RNSpoly (input_RNSpoly),
     .out_valid (out_valid_2),
-    .output_RNSpoly (output_RNSpoly)
+    .output_RNSpoly (output_RNSpoly),
+    .doing_fastBconv()//unused
 );
 
 //------------------------------------------------------------

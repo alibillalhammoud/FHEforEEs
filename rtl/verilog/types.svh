@@ -38,6 +38,9 @@ parameter rns_residue_t w_INV_BASIS [`qBBa_BASIS_LEN] = '{`RNS_PRIME_BITS'd165, 
 `define BBa_BASIS_LEN 11
 parameter rns_residue_t BBa_BASIS [`BBa_BASIS_LEN] = '{`RNS_PRIME_BITS'd2147492609, `RNS_PRIME_BITS'd2147493889, `RNS_PRIME_BITS'd2147494273, `RNS_PRIME_BITS'd2147494529, `RNS_PRIME_BITS'd2147494913, `RNS_PRIME_BITS'd2147495681, `RNS_PRIME_BITS'd2147496193, `RNS_PRIME_BITS'd2147496961, `RNS_PRIME_BITS'd2147499521, `RNS_PRIME_BITS'd2147502337, `RNS_PRIME_BITS'd2147503489};
 
+
+// needed for verilator
+parameter rns_residue_t q_len_ZERO [`q_BASIS_LEN] = '{default: '0};
 // RNS integers
 typedef rns_residue_t rns_int_q_BASIS_t [`q_BASIS_LEN];
 typedef rns_residue_t rns_int_B_BASIS_t [`B_BASIS_LEN];
