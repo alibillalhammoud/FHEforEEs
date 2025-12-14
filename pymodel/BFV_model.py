@@ -70,6 +70,34 @@ class BFVSchemeClient:
         m = m_scaled % self.config.t # remove Delta and reduce
         decode_v = self.config.batch_decode(m)
         return decode_v
+    
+    # WARNING: untested code!!!
+    # for example, try "pre_plain = client.decrypt_deg2(D0, D1, D2, modulus=modulus_bBa, scaling=config.Delta)"
+    #   -> after "modswitch" step in ct ct mul
+    def decrypt_deg2(self, D0, D1, D2, modulus, scaling):
+        """Decrypt a degree-2 ciphertext (D0,D1,D2) that is encrypted modulo `modulus` and
+            encodes the plaintext with factor  `scaling`
+        scaling = Delta    -> after step (3)/(4)/(5)
+                = Delta^2  -> right after polynomial multiplication
+        """
+        cfg = self.config
+        # convert RNS integers -> raw ints (they are already modulo `modulus`)
+        D0 = cfg.convert_RNS_backto_integers(D0)
+        D1 = cfg.convert_RNS_backto_integers(D1)
+        D2 = cfg.convert_RNS_backto_integers(D2)
+        S   = self._S
+        S2  = self.polynomial_mul(S, S)
+        # evaluate D0 + D1·S + D2·S²  (mod modulus)
+        term = (D0 + self.polynomial_mul(D1, S) +
+                    self.polynomial_mul(D2, S2)) % modulus
+        # centre-lift around zero (not strictly necessary for correctness,
+        # but keeps the numbers small before rounding)
+        mask = term > modulus // 2
+        term[mask] -= modulus
+        # divide by the current scaling factor and reduce mod-t
+        m_scaled = nparr_int_round(term, scaling)     # term / scaling
+        m_plain  = m_scaled % cfg.t
+        return cfg.batch_decode(m_plain)
 
 
 class BFVSchemeServer:

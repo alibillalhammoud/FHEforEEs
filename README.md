@@ -3,9 +3,7 @@ This repository provides a Python model and partial RTL implementation of the Br
 We did this work as part of a University project. As electrical engineers, we found it difficult to understand FHE at the level required to implement hardware acceleration. Although we were not able to complete RTL in the short time we worked on the project (and **the RTL we wrote is not optimized for real world**), we believe our contribution can help explain the algorithm.  
 The most helpful resource was the open-source fhetextbook [here](https://fhetextbook.github.io/) and [here](https://github.com/fhetextbook/fhetextbook.github.io).
 
-We also include pdf/slides to explain the algorithm to the EE who needs enough info to implement **[WIP 50% done]**. Note, we did not implement boot-strapping.
-
-Additionally, we include real hardware tips for the EE who may want to do this in the future. The main challenge you will face with real implementation is memory. Because the algorithm is heavy on SIMD processing, a very efficient implementation can be done with limited data movements. We had some idea for the pipeline and memory, but ran out of time (still do not have correctness on everything). Furthermore, our controller implementation is very crude and we have some suggestions on how to the pipeline smaller (area & power) to make it more efficient.
+We also include pdf/slides to explain the algorithm to the EE who needs enough info to implement. Note, we did not implement boot-strapping.
 
 ### Python Files
 Python implementation provides a reference for the hardware design  
